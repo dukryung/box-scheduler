@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router'
 import { OVERLAP_MESSAGE } from '../../api/client'
 import { addDays, formatDayTitle, todayISO } from '../../lib/date'
 import { SLOT_MINUTES, type SlotRange } from '../../lib/slots'
 import { useDayStore } from '../../store/dayStore'
 import { BrainDumpPanel, type DraggedItem } from '../braindump/BrainDumpPanel'
+import { ViewSwitch } from '../nav/ViewSwitch'
 import { BlockPopover } from './BlockPopover'
 import { DEFAULT_BLOCK_COLOR } from './colors'
 import { TimeGrid, type GridAnchor } from './TimeGrid'
@@ -24,18 +26,19 @@ function useNowSlot(): number {
   return slot
 }
 
-export function DayView() {
-  const { date, blocks, error, setDate, createBlock, updateBlock, deleteBlock, setError } = useDayStore()
+export function DayView({ date }: { date: string }) {
+  const { blocks, error, setDate, createBlock, updateBlock, deleteBlock, setError } = useDayStore()
+  const navigate = useNavigate()
   const [popover, setPopover] = useState<Popover | null>(null)
   const [dragged, setDragged] = useState<DraggedItem | null>(null)
   const nowSlot = useNowSlot()
   const isToday = date === todayISO()
 
+  // The URL is the source of truth for which day is shown.
   useEffect(() => {
+    setPopover(null)
     void setDate(date)
-    // Load once on mount; navigation calls setDate directly.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [date, setDate])
 
   useEffect(() => {
     if (!error) return
@@ -43,10 +46,7 @@ export function DayView() {
     return () => clearTimeout(id)
   }, [error, setError])
 
-  const go = (d: string) => {
-    setPopover(null)
-    void setDate(d)
-  }
+  const go = (d: string) => navigate(`/day/${d}`)
   const closePopover = useCallback(() => setPopover(null), [])
 
   const editingBlock = popover?.mode === 'edit' ? blocks.find((b) => b.id === popover.id) : undefined
@@ -68,8 +68,11 @@ export function DayView() {
             오늘
           </button>
         )}
-        <div className="ml-auto text-sm text-zinc-500 tabular-nums">
-          완료 {doneBoxes} / 계획 {plannedBoxes} 박스
+        <div className="ml-auto flex items-center gap-3">
+          <span className="hidden text-sm text-zinc-500 tabular-nums sm:inline">
+            완료 {doneBoxes} / 계획 {plannedBoxes} 박스
+          </span>
+          <ViewSwitch view="day" date={date} />
         </div>
       </header>
 

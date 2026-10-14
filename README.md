@@ -26,6 +26,14 @@ docker compose up -d db api
 cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으로 프록시
 ```
 
+## 화면 주소
+
+| 주소 | 화면 |
+|---|---|
+| `/day/YYYY-MM-DD` | 일간 시간표 + Brain Dump |
+| `/month/YYYY-MM` | 월간 달력 (날짜별 블록 요약, 클릭 시 일간으로 이동) |
+| `/` | 오늘 일간 화면으로 이동 |
+
 ## 슬롯 규칙
 
 - 슬롯 = 10분, 하루 `0..143`. 예: 10:00 → 60, 10:20 → 62

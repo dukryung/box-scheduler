@@ -31,3 +31,22 @@ export interface Day {
   blocks: Block[]
   brainDump: BrainDumpItem[]
 }
+
+export interface CalendarItem {
+  title: string
+  color: string | null
+  startSlot: number
+  done: boolean
+}
+
+export interface CalendarDay {
+  items: CalendarItem[] // earliest few blocks of the day
+  total: number
+  plannedBoxes: number
+  doneBoxes: number
+}
+
+export interface CalendarMonth {
+  month: string
+  days: Record<string, CalendarDay>
+}
