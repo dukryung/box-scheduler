@@ -17,6 +17,7 @@ import {
   type SlotRange,
 } from '../../lib/slots'
 import { Check, Sparkle } from '../../components/icons'
+import { doneStrike } from '../../components/styles'
 import { useIsMobile } from '../../lib/useIsMobile'
 import { TONE_CLASS, toneVars } from './colors'
 
@@ -320,14 +321,13 @@ export function TimeGrid({
                       isTempId(block.id) ? 'animate-pulse' : 'cursor-grab active:cursor-grabbing',
                       isDragged ? 'z-20 shadow-lg ring-2 ring-accent' : '',
                       isDragged && dropInvalid ? 'opacity-50 ring-danger' : '',
-                      block.done && !isDragged ? 'opacity-70' : '',
                     ].join(' ')}
                   >
                     {i === labelIdx && (
                       <>
                         {block.done && <Check size={14} className="shrink-0" />}
                         {block.source === 'ai' && <Sparkle size={13} className="shrink-0" aria-label="AI 제안" />}
-                        <span className={`truncate ${block.done ? 'line-through' : ''}`}>{block.title}</span>
+                        <span className={`truncate ${block.done ? doneStrike : ''}`}>{block.title}</span>
                         <span className="hidden shrink-0 font-mono text-[11px] font-normal opacity-75 md:inline">
                           {isDragged ? formatRange(range) : `${slotToTime(range.start)}–${slotToTime(range.end)}`}
                         </span>

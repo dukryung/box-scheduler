@@ -1,7 +1,7 @@
 import { useState, type Ref } from 'react'
 import type { BrainDumpItem } from '../../api/types'
 import { ArrowRight, CalendarPlus, Close, Grip, Plus } from '../../components/icons'
-import { secondaryButton, srOnly } from '../../components/styles'
+import { doneStrike, secondaryButton, srOnly } from '../../components/styles'
 import { addDays, parseISODate, todayISO } from '../../lib/date'
 import { formatDuration } from '../../lib/slots'
 import { isTempId, useDayStore } from '../../store/dayStore'
@@ -184,7 +184,7 @@ function BrainDumpRow({ item, scheduled, onDragItem, onPlace, onUpdate, onDelete
         ) : (
           <div
             onDoubleClick={() => open && !pending && setEditing(true)}
-            className={`text-[15px] leading-snug font-medium break-words md:text-sm ${item.status === 'done' ? 'text-faint line-through' : ''}`}
+            className={`text-[15px] leading-snug font-medium break-words md:text-sm ${item.status === 'done' ? `text-faint ${doneStrike}` : ''}`}
           >
             {item.title}
           </div>

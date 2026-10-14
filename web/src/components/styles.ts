@@ -18,3 +18,6 @@ export const aiOutlineButton =
   'inline-flex items-center justify-center gap-2 rounded-xl border border-ai-line bg-surface px-4 text-sm font-semibold text-ai-ink hover:bg-ai-soft disabled:opacity-40'
 
 export const srOnly = 'absolute h-px w-px overflow-hidden whitespace-nowrap [clip:rect(0_0_0_0)]'
+
+/** Strikethrough for completed items: a thicker red line so "done" reads at a glance. */
+export const doneStrike = 'line-through decoration-danger decoration-2'

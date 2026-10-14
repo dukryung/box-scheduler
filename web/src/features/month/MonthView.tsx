@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router'
 import { api } from '../../api/client'
 import type { Block, CalendarDay, CalendarMonth } from '../../api/types'
 import { ChevronLeft, ChevronRight } from '../../components/icons'
-import { card, iconButton } from '../../components/styles'
+import { card, doneStrike, iconButton } from '../../components/styles'
 import { WEEKDAYS, addMonths, formatMonthTitle, monthGrid, monthOf, parseISODate, todayISO } from '../../lib/date'
 import { slotToTime } from '../../lib/slots'
 import { hm } from '../../lib/hm'
@@ -176,10 +176,10 @@ function DayCell({ iso, lastRow, inMonth, isToday, day }: CellProps) {
               <li
                 key={i}
                 style={toneVars(it.color)}
-                className={`${TONE_CLASS} flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-[3px] text-xs font-medium ${it.done ? 'opacity-60' : ''}`}
+                className={`${TONE_CLASS} flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-[3px] text-xs font-medium`}
               >
                 <span className="shrink-0 font-mono text-[11px] opacity-80">{slotToTime(it.startSlot)}</span>
-                <span className={`truncate ${it.done ? 'line-through' : ''}`}>{it.title}</span>
+                <span className={`truncate ${it.done ? doneStrike : ''}`}>{it.title}</span>
               </li>
             ))}
             {more > 0 && <li className="pl-1.5 text-xs text-muted">+{more}개 더</li>}
@@ -267,7 +267,7 @@ function Agenda({ date }: { date: string }) {
               {slotToTime(b.startSlot)}–{slotToTime(b.endSlot)}
             </span>
             <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: b.color ?? 'var(--app-accent)' }} />
-            <span className={`truncate text-sm ${b.done ? 'text-faint line-through' : 'font-medium'}`}>{b.title}</span>
+            <span className={`truncate text-sm ${b.done ? `text-faint ${doneStrike}` : 'font-medium'}`}>{b.title}</span>
           </li>
         ))}
       </ul>
