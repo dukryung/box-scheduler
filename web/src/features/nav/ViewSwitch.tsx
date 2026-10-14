@@ -1,26 +1,75 @@
+import type { ReactNode } from 'react'
 import { Link } from 'react-router'
+import { Logo, TabDay, TabMonth, TabStats } from '../../components/icons'
 import { monthOf } from '../../lib/date'
 
+export type View = 'day' | 'month' | 'stats'
+
 interface Props {
-  view: 'day' | 'month' | 'stats'
+  view: View
   /** Day to open in day view, and whose month to open in month view. */
   date: string
 }
 
+const targets = (date: string) =>
+  [
+    { view: 'day', label: '일', to: `/day/${date}`, Icon: TabDay },
+    { view: 'month', label: '월', to: `/month/${monthOf(date)}`, Icon: TabMonth },
+    { view: 'stats', label: '통계', to: '/stats', Icon: TabStats },
+  ] as const
+
+/** Segmented 일/월/통계 control in the desktop top bar. */
 export function ViewSwitch({ view, date }: Props) {
-  const tab = (active: boolean) =>
-    `rounded px-3 py-1 text-sm ${active ? 'bg-white shadow-sm dark:bg-zinc-700' : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100'}`
   return (
-    <nav aria-label="보기 전환" className="flex rounded-md bg-zinc-100 p-0.5 dark:bg-zinc-800">
-      <Link to={`/day/${date}`} className={tab(view === 'day')} aria-current={view === 'day' ? 'page' : undefined}>
-        일
-      </Link>
-      <Link to={`/month/${monthOf(date)}`} className={tab(view === 'month')} aria-current={view === 'month' ? 'page' : undefined}>
-        월
-      </Link>
-      <Link to="/stats" className={tab(view === 'stats')} aria-current={view === 'stats' ? 'page' : undefined}>
-        통계
-      </Link>
+    <nav aria-label="보기 전환" className="hidden rounded-[10px] bg-subtle p-[3px] md:flex">
+      {targets(date).map((t) => (
+        <Link
+          key={t.view}
+          to={t.to}
+          aria-current={view === t.view ? 'page' : undefined}
+          className={`rounded-lg px-3.5 py-1.5 text-sm ${
+            view === t.view ? 'bg-surface font-semibold text-ink shadow-[0_1px_2px_rgba(21,23,28,0.08)]' : 'text-muted hover:text-ink'
+          }`}
+        >
+          {t.label}
+        </Link>
+      ))}
     </nav>
   )
 }
+
+/** Bottom tab bar on phones. */
+export function BottomTabs({ view, date }: Props) {
+  return (
+    <nav
+      aria-label="화면 전환"
+      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-line bg-surface pb-[max(env(safe-area-inset-bottom),8px)] md:hidden"
+    >
+      {targets(date).map(({ view: v, label, to, Icon }) => (
+        <Link
+          key={v}
+          to={to}
+          aria-current={view === v ? 'page' : undefined}
+          className={`flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] ${view === v ? 'font-semibold text-accent' : 'text-muted'}`}
+        >
+          <Icon size={22} />
+          {label}
+        </Link>
+      ))}
+    </nav>
+  )
+}
+
+/** White top bar; the logo shows from tablet width up. */
+export function TopBar({ children }: { children: ReactNode }) {
+  return (
+    <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line bg-surface px-4 py-3 md:px-6">
+      <div className="hidden items-center gap-2.5 md:flex">
+        <Logo />
+        <span className="text-base font-bold tracking-tight">Box Scheduler</span>
+      </div>
+      {children}
+    </header>
+  )
+}
+

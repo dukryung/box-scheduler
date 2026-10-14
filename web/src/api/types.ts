@@ -76,6 +76,8 @@ export interface Stats {
   from: string
   to: string
   totals: BoxCount & { blocks: number; doneBlocks: number; activeDays: number; aiBoxes: number }
+  /** Same-length period right before `from`, for comparison. */
+  previous: BoxCount
   daily: Array<BoxCount & { date: string }>
   hourly: Array<BoxCount & { hour: number }>
   topTasks: Array<BoxCount & { title: string }>

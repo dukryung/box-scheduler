@@ -32,3 +32,10 @@ func TestComputeStats(t *testing.T) {
 		t.Fatalf("topTasks = %+v", s.TopTasks)
 	}
 }
+
+func TestSumBoxes(t *testing.T) {
+	got := sumBoxes([]store.Block{{StartSlot: 0, EndSlot: 3, Done: true}, {StartSlot: 10, EndSlot: 12}})
+	if got.PlannedBoxes != 5 || got.DoneBoxes != 3 {
+		t.Fatalf("sumBoxes = %+v", got)
+	}
+}

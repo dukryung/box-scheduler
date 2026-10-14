@@ -85,3 +85,22 @@ export function fitRange(slot: number, boxes: number, occupied: SlotRange[]): Sl
   if (!isFree({ start: slot, end: slot + 1 }, occupied)) return null
   return { start: slot, end: Math.min(slot + boxes, nextBoundary(slot, occupied)) }
 }
+
+/**
+ * Start times worth offering for a `boxes`-long task: the start of every free gap
+ * it fits in, plus each full hour inside longer gaps, from `from` on.
+ */
+export function startCandidates(
+  boxes: number,
+  occupied: SlotRange[],
+  from: number,
+  limit = 6,
+): Array<{ start: number; freeBoxes: number }> {
+  const out: Array<{ start: number; freeBoxes: number }> = []
+  for (let s = Math.max(from, 0); s + boxes <= SLOTS_PER_DAY && out.length < limit; s++) {
+    if (!isFree({ start: s, end: s + boxes }, occupied)) continue
+    const gapStart = s === from || !isFree({ start: s - 1, end: s }, occupied)
+    if (gapStart || s % SLOTS_PER_HOUR === 0) out.push({ start: s, freeBoxes: nextBoundary(s, occupied) - s })
+  }
+  return out
+}

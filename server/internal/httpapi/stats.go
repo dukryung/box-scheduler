@@ -44,9 +44,11 @@ type statsTotals struct {
 }
 
 type statsResponse struct {
-	From      string         `json:"from"`
-	To        string         `json:"to"`
-	Totals    statsTotals    `json:"totals"`
+	From   string      `json:"from"`
+	To     string      `json:"to"`
+	Totals statsTotals `json:"totals"`
+	// Previous is the same-length period right before From, for comparison.
+	Previous  boxCount       `json:"previous"`
 	Daily     []dailyStat    `json:"daily"`
 	Hourly    []hourlyStat   `json:"hourly"`
 	TopTasks  []taskStat     `json:"topTasks"`
@@ -75,8 +77,17 @@ func (a *API) getStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	days := int(to.Sub(from).Hours()/24) + 1
+	prevBlocks, err := a.store.ListBlocks(r.Context(), uid,
+		from.AddDate(0, 0, -days).Format(dateLayout), from.AddDate(0, 0, -1).Format(dateLayout))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+
 	resp := computeStats(blocks, from, to)
 	resp.BrainDump = counts
+	resp.Previous = sumBoxes(prevBlocks)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -152,4 +163,16 @@ func computeStats(blocks []store.Block, from, to time.Time) statsResponse {
 		resp.TopTasks = resp.TopTasks[:topTasksLimit]
 	}
 	return resp
+}
+
+func sumBoxes(blocks []store.Block) boxCount {
+	var c boxCount
+	for _, b := range blocks {
+		boxes := b.EndSlot - b.StartSlot
+		c.PlannedBoxes += boxes
+		if b.Done {
+			c.DoneBoxes += boxes
+		}
+	}
+	return c
 }

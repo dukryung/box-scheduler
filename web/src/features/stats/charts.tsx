@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { hm } from '../../lib/hm'
 import { formatDuration } from '../../lib/slots'
 
 // Planned vs done is drawn as one blue ramp: the lighter planned column with the
@@ -36,11 +37,11 @@ function niceHours(maxBoxes: number) {
   return { step, top: Math.ceil(maxHours / step) * step }
 }
 
-const hourLabel = (h: number) => `${Number.isInteger(h) ? h : h.toFixed(1)}시간`
+const hourLabel = (h: number) => `${Number.isInteger(h) ? h : h.toFixed(1)}h`
 
 export function Legend() {
   return (
-    <div className="flex items-center gap-4 text-xs text-zinc-500">
+    <div className="flex items-center gap-4 text-xs text-ink-2">
       <span className="flex items-center gap-1.5">
         <span className="h-2.5 w-2.5 rounded-sm" style={{ background: PLANNED }} />
         계획
@@ -57,8 +58,8 @@ function TooltipRows({ planned, done }: { planned: number; done: number }) {
   const row = (color: string, value: number, label: string) => (
     <div className="flex items-center gap-2">
       <span className="h-0.5 w-3 rounded" style={{ background: color }} />
-      <span className="font-semibold text-zinc-900 dark:text-zinc-100">{value ? formatDuration(value) : '없음'}</span>
-      <span className="text-zinc-500">{label}</span>
+      <span className="font-semibold text-ink">{value ? formatDuration(value) : '없음'}</span>
+      <span className="text-muted">{label}</span>
     </div>
   )
   return (
@@ -142,10 +143,10 @@ export function ColumnChart({ data, height = 200, label }: { data: ColumnDatum[]
 
       {activeDatum && (
         <div
-          className="pointer-events-none absolute top-0 z-10 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs shadow-lg dark:border-zinc-700 dark:bg-zinc-900"
+          className="pointer-events-none absolute top-0 z-10 rounded-xl border border-line bg-surface px-3 py-2 text-xs shadow-lg"
           style={{ left: Math.min(Math.max(tipX - 70, 0), Math.max(width - 140, 0)), width: 140 }}
         >
-          <div className="mb-1 text-zinc-500">{activeDatum.title}</div>
+          <div className="mb-1 text-muted">{activeDatum.title}</div>
           <TooltipRows planned={activeDatum.planned} done={activeDatum.done} />
         </div>
       )}
@@ -159,7 +160,7 @@ export function BarList({ data }: { data: Array<{ title: string; planned: number
   return (
     <ul className="flex flex-col gap-2.5">
       {data.map((d) => (
-        <li key={d.title} className="grid grid-cols-[minmax(0,8rem)_1fr] items-center gap-3 text-sm sm:grid-cols-[minmax(0,12rem)_1fr]">
+        <li key={d.title} className="grid grid-cols-[minmax(0,7rem)_1fr] items-center gap-3 text-[13px] sm:grid-cols-[minmax(0,10rem)_1fr]">
           <span className="truncate" title={d.title}>
             {d.title}
           </span>
@@ -169,9 +170,9 @@ export function BarList({ data }: { data: Array<{ title: string; planned: number
               <div className="absolute inset-0 rounded-r" style={{ background: PLANNED }} />
               <div className="absolute inset-y-0 left-0 rounded-r" style={{ width: `${(d.done / d.planned) * 100}%`, background: DONE }} />
             </div>
-            <span className="shrink-0 text-xs text-zinc-500 tabular-nums">
-              {formatDuration(d.planned)}
-              {d.done > 0 && ` · 완료 ${Math.round((d.done / d.planned) * 100)}%`}
+            <span className="shrink-0 text-xs text-muted">
+              <span className="font-mono text-ink">{hm(d.planned)}</span>
+              {` · 완료 ${Math.round((d.done / d.planned) * 100)}%`}
             </span>
           </div>
         </li>
@@ -184,10 +185,10 @@ export function BarList({ data }: { data: Array<{ title: string; planned: number
 export function TableView({ head, rows }: { head: string; rows: Array<{ key: string; label: string; planned: number; done: number }> }) {
   return (
     <details className="mt-2 text-xs">
-      <summary className="cursor-pointer text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">표로 보기</summary>
+      <summary className="cursor-pointer text-muted hover:text-ink">표로 보기</summary>
       <div className="mt-2 max-h-64 overflow-y-auto">
         <table className="w-full text-left tabular-nums">
-          <thead className="text-zinc-500">
+          <thead className="text-muted">
             <tr>
               <th className="py-1 font-normal">{head}</th>
               <th className="py-1 text-right font-normal">계획</th>
@@ -196,7 +197,7 @@ export function TableView({ head, rows }: { head: string; rows: Array<{ key: str
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.key} className="border-t border-zinc-100 dark:border-zinc-800">
+              <tr key={r.key} className="border-t border-grid">
                 <td className="py-1">{r.label}</td>
                 <td className="py-1 text-right">{r.planned ? formatDuration(r.planned) : '–'}</td>
                 <td className="py-1 text-right">{r.done ? formatDuration(r.done) : '–'}</td>
@@ -211,15 +212,60 @@ export function TableView({ head, rows }: { head: string; rows: Array<{ key: str
 
 export function Card({ title, subtitle, children, aside }: { title: string; subtitle?: string; children: ReactNode; aside?: ReactNode }) {
   return (
-    <section className="min-w-0 rounded-xl border border-zinc-200 p-4 dark:border-zinc-800">
-      <header className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+    <section className="min-w-0 rounded-2xl border border-line bg-surface p-4 md:p-5">
+      <header className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold">{title}</h2>
-          {subtitle && <p className="text-xs text-zinc-500">{subtitle}</p>}
+          <h2 className="text-[15px] font-semibold">{title}</h2>
+          {subtitle && <p className="text-xs text-muted">{subtitle}</p>}
         </div>
         {aside}
       </header>
       {children}
     </section>
+  )
+}
+
+// Sequential blue ramp (validated): lightest = little planned time, darkest = most.
+const RAMP = ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#184f95']
+
+/** 24 cells, one per hour, shaded by how much time was planned in that hour. */
+export function HourStrip({ hours }: { hours: Array<{ hour: number; planned: number; done: number }> }) {
+  const max = Math.max(...hours.map((h) => h.planned), 1)
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="grid grid-cols-12 gap-[3px] md:grid-cols-24" role="list" aria-label="시간대별 계획 시간">
+        {hours.map((h) => {
+          const step = h.planned === 0 ? -1 : Math.min(RAMP.length - 1, Math.floor((h.planned / max) * RAMP.length))
+          const label = `${h.hour}:00–${h.hour + 1}:00 · 계획 ${h.planned ? formatDuration(h.planned) : '없음'}${h.done ? ` · 완료 ${formatDuration(h.done)}` : ''}`
+          return (
+            <div
+              key={h.hour}
+              role="listitem"
+              tabIndex={0}
+              title={label}
+              aria-label={label}
+              className={`h-[30px] rounded-[5px] outline-none focus-visible:ring-2 focus-visible:ring-accent md:h-11 ${step < 0 ? 'bg-subtle' : ''}`}
+              style={step >= 0 ? { background: RAMP[step] } : undefined}
+            />
+          )
+        })}
+      </div>
+      <div className="flex justify-between font-mono text-[10px] text-faint md:grid md:grid-cols-4 md:text-[11px]">
+        <span>0시</span>
+        <span className="hidden md:inline">6시</span>
+        <span>12시</span>
+        <span className="hidden md:inline">18시</span>
+        <span className="md:hidden">23시</span>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-muted">
+        적음
+        <span className="flex gap-0.5">
+          {RAMP.map((c) => (
+            <span key={c} className="h-2.5 w-4 rounded-sm" style={{ background: c }} />
+          ))}
+        </span>
+        많음
+      </div>
+    </div>
   )
 }

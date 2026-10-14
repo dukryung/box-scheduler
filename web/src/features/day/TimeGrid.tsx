@@ -16,9 +16,13 @@ import {
   slotToTime,
   type SlotRange,
 } from '../../lib/slots'
-import { DEFAULT_BLOCK_COLOR } from './colors'
+import { Check, Sparkle } from '../../components/icons'
+import { useIsMobile } from '../../lib/useIsMobile'
+import { TONE_CLASS, toneVars } from './colors'
 
-const ROW_HEIGHT = 40
+// Row height per hour: a little shorter on phones so more of the day fits.
+const ROW_HEIGHT = 46
+const ROW_HEIGHT_MOBILE = 44
 
 type Drag =
   | { kind: 'select'; anchor: number; range: SlotRange }
@@ -72,19 +76,31 @@ export function TimeGrid({
   const scrollRef = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
   const [dropRange, setDropRange] = useState<SlotRange | null>(null)
+  const rowHeight = useIsMobile() ? ROW_HEIGHT_MOBILE : ROW_HEIGHT
 
   // Start the view a little before "now" (or 08:00) instead of at midnight.
   useEffect(() => {
     const row = nowSlot !== null ? Math.floor(nowSlot / SLOTS_PER_HOUR) - 1 : 8
-    scrollRef.current?.scrollTo({ top: Math.max(0, row) * ROW_HEIGHT })
+    scrollRef.current?.scrollTo({ top: Math.max(0, row) * rowHeight })
     // Only on mount / day change, not every time "now" ticks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nowSlot === null])
 
+  // When AI suggestions appear, bring the earliest one into view (on phones it may
+  // otherwise sit behind the suggestion sheet).
+  const firstGhost = ghosts.length ? Math.min(...ghosts.map((g) => g.range.start)) : null
+  useEffect(() => {
+    if (firstGhost === null) return
+    const row = Math.floor(firstGhost / SLOTS_PER_HOUR)
+    scrollRef.current?.scrollTo({ top: Math.max(0, row - 1) * rowHeight, behavior: 'smooth' })
+    // Only when a new set of suggestions arrives, not on every hover or toggle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstGhost === null])
+
   function slotFromPoint(clientX: number, clientY: number): number {
     const rect = cellsRef.current!.getBoundingClientRect()
     const col = clamp(Math.floor(((clientX - rect.left) / rect.width) * SLOTS_PER_HOUR), 0, SLOTS_PER_HOUR - 1)
-    const row = clamp(Math.floor((clientY - rect.top) / ROW_HEIGHT), 0, HOURS - 1)
+    const row = clamp(Math.floor((clientY - rect.top) / rowHeight), 0, HOURS - 1)
     return row * SLOTS_PER_HOUR + col
   }
 
@@ -178,23 +194,25 @@ export function TimeGrid({
   const highlight = drag?.kind === 'select' ? drag.range : pendingRange
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex border-b border-zinc-200 pb-1 text-xs text-zinc-400 dark:border-zinc-800">
-        <div className="w-12 shrink-0" />
-        <div className="grid flex-1 grid-cols-6">
+    <div className="flex min-h-0 flex-1 flex-col gap-1">
+      <div className="flex gap-1.5 md:gap-3">
+        <div className="w-6 shrink-0 md:w-[52px]" />
+        <div className="grid flex-1 grid-cols-6 font-mono text-[10px] text-faint md:text-[11px]">
           {Array.from({ length: SLOTS_PER_HOUR }, (_, i) => (
-            <div key={i} className="pl-1">
-              :{String(i * 10).padStart(2, '0')}
-            </div>
+            <span key={i}>:{String(i * 10).padStart(2, '0')}</span>
           ))}
         </div>
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex">
-          <div className="w-12 shrink-0">
+        <div className="flex gap-1.5 md:gap-3">
+          <div className="w-6 shrink-0 md:w-[52px]">
             {Array.from({ length: HOURS }, (_, h) => (
-              <div key={h} style={{ height: ROW_HEIGHT }} className="pr-2 pt-1 text-right text-xs text-zinc-400 tabular-nums">
+              <div
+                key={h}
+                style={{ height: rowHeight }}
+                className={`pt-1 text-right font-mono text-[11px] md:text-xs ${nowSlot !== null && Math.floor(nowSlot / SLOTS_PER_HOUR) === h ? 'font-medium text-accent' : 'text-faint'}`}
+              >
                 {String(h).padStart(2, '0')}
               </div>
             ))}
@@ -202,10 +220,10 @@ export function TimeGrid({
 
           <div
             ref={cellsRef}
-            className="grid flex-1 touch-pan-y select-none"
+            className="grid flex-1 touch-pan-y select-none border-t border-l border-grid"
             style={{
               gridTemplateColumns: `repeat(${SLOTS_PER_HOUR}, minmax(0, 1fr))`,
-              gridTemplateRows: `repeat(${HOURS}, ${ROW_HEIGHT}px)`,
+              gridTemplateRows: `repeat(${HOURS}, ${rowHeight}px)`,
             }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
@@ -224,14 +242,23 @@ export function TimeGrid({
                   title={slotToTime(slot)}
                   style={{ gridRow: Math.floor(slot / SLOTS_PER_HOUR) + 1, gridColumn: col + 1 }}
                   className={[
-                    'border-b border-zinc-200 dark:border-zinc-800',
-                    col === 2 ? 'border-r border-r-zinc-300 dark:border-r-zinc-700' : 'border-r border-r-zinc-100 dark:border-r-zinc-900',
-                    selected ? 'bg-indigo-100 dark:bg-indigo-950' : 'hover:bg-zinc-50 dark:hover:bg-zinc-900',
-                    slot === nowSlot ? 'ring-2 ring-inset ring-rose-400' : '',
+                    'border-b border-grid',
+                    col === 2 ? 'border-r border-r-line-strong/70' : 'border-r border-r-grid',
+                    selected ? 'bg-accent-soft' : 'hover:bg-subtle/60',
+                    slot === nowSlot ? 'rounded-md bg-accent/10 shadow-[inset_0_0_0_2px_var(--app-accent)]' : '',
                   ].join(' ')}
                 />
               )
             })}
+
+            {nowSlot !== null && (
+              <div
+                style={{ gridRow: Math.floor(nowSlot / SLOTS_PER_HOUR) + 1, gridColumn: (nowSlot % SLOTS_PER_HOUR) + 1 }}
+                className="pointer-events-none z-30 -mt-2.5 ml-1.5 self-start justify-self-start rounded-md bg-accent px-1.5 font-mono text-[10px] font-medium whitespace-nowrap text-white"
+              >
+                지금 {slotToTime(nowSlot)}
+              </div>
+            )}
 
             {dropBoxes !== null &&
               dropRange &&
@@ -239,7 +266,7 @@ export function TimeGrid({
                 <div
                   key={`drop-${seg.row}`}
                   style={{ gridRow: seg.row + 1, gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 1}` }}
-                  className="pointer-events-none z-20 m-0.5 flex items-center rounded-md border-2 border-dashed border-indigo-500 bg-indigo-500/10 px-2 text-xs font-medium text-indigo-700 dark:text-indigo-300"
+                  className="pointer-events-none z-20 m-[3px] flex items-center rounded-lg border-2 border-dashed border-accent bg-accent/10 px-2 text-xs font-semibold text-accent-ink"
                 >
                   {i === 0 && formatRange(dropRange)}
                 </div>
@@ -254,13 +281,16 @@ export function TimeGrid({
                   data-ghost={g.key}
                   style={{ gridRow: seg.row + 1, gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 1}` }}
                   className={[
-                    'pointer-events-none z-20 m-0.5 flex items-center overflow-hidden rounded-md border-2 border-dashed px-2 text-xs font-medium',
-                    g.highlighted
-                      ? 'border-violet-600 bg-violet-500/30 text-violet-900 dark:text-violet-100'
-                      : 'border-violet-400 bg-violet-500/10 text-violet-700 dark:text-violet-300',
+                    'pointer-events-none z-20 m-[3px] flex items-center gap-1.5 overflow-hidden rounded-lg border-[1.5px] border-dashed border-ai px-2.5 text-xs font-semibold text-ai-ink md:text-[13px]',
+                    g.highlighted ? 'ai-ghost-active bg-ai/20' : 'bg-ai/[0.07]',
                   ].join(' ')}
                 >
-                  {i === labelIdx && <span className="truncate">✨ {g.title}</span>}
+                  {i === labelIdx && (
+                    <>
+                      <Sparkle size={13} className="shrink-0" />
+                      <span className="truncate">{g.title}</span>
+                    </>
+                  )}
                 </div>
               ))
             })}
@@ -280,24 +310,28 @@ export function TimeGrid({
                     style={{
                       gridRow: seg.row + 1,
                       gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 1}`,
-                      backgroundColor: block.color ?? DEFAULT_BLOCK_COLOR,
+                      ...toneVars(block.color),
                     }}
                     className={[
-                      'relative z-10 my-0.5 flex touch-none items-center overflow-hidden px-2 text-xs text-white shadow-sm',
-                      first ? 'ml-0.5 rounded-l-md' : '',
-                      last ? 'mr-0.5 rounded-r-md' : '',
+                      TONE_CLASS,
+                      'relative z-10 my-[3px] flex touch-none items-center gap-1.5 overflow-hidden px-2 text-xs font-semibold md:px-2.5 md:text-[13px]',
+                      first ? 'ml-[3px] rounded-l-lg' : '',
+                      last ? 'mr-[3px] rounded-r-lg' : '',
                       isTempId(block.id) ? 'animate-pulse' : 'cursor-grab active:cursor-grabbing',
-                      isDragged ? 'z-20 shadow-lg ring-2 ring-white/70' : '',
-                      isDragged && dropInvalid ? 'opacity-50 ring-red-500' : '',
-                      block.done ? 'opacity-50' : '',
+                      isDragged ? 'z-20 shadow-lg ring-2 ring-accent' : '',
+                      isDragged && dropInvalid ? 'opacity-50 ring-danger' : '',
+                      block.done && !isDragged ? 'opacity-70' : '',
                     ].join(' ')}
                   >
                     {i === labelIdx && (
-                      <span className={`truncate font-medium ${block.done ? 'line-through' : ''}`}>
-                        {block.source === 'ai' && '✨ '}
-                        {block.title}
-                        {isDragged && <span className="ml-1 font-normal opacity-80">{formatRange(range)}</span>}
-                      </span>
+                      <>
+                        {block.done && <Check size={14} className="shrink-0" />}
+                        {block.source === 'ai' && <Sparkle size={13} className="shrink-0" aria-label="AI 제안" />}
+                        <span className={`truncate ${block.done ? 'line-through' : ''}`}>{block.title}</span>
+                        <span className="hidden shrink-0 font-mono text-[11px] font-normal opacity-75 md:inline">
+                          {isDragged ? formatRange(range) : `${slotToTime(range.start)}–${slotToTime(range.end)}`}
+                        </span>
+                      </>
                     )}
                     {first && <div data-edge="start" className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" />}
                     {last && <div data-edge="end" className="absolute inset-y-0 right-0 w-2 cursor-ew-resize" />}
