@@ -66,3 +66,18 @@ export interface Suggestion {
   estimates: Array<{ taskId: string; estimateBoxes: number }>
   notes: string
 }
+
+export interface BoxCount {
+  plannedBoxes: number
+  doneBoxes: number
+}
+
+export interface Stats {
+  from: string
+  to: string
+  totals: BoxCount & { blocks: number; doneBlocks: number; activeDays: number; aiBoxes: number }
+  daily: Array<BoxCount & { date: string }>
+  hourly: Array<BoxCount & { hour: number }>
+  topTasks: Array<BoxCount & { title: string }>
+  brainDump: Record<'open' | 'done' | 'carried' | 'dropped', number>
+}

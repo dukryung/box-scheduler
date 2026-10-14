@@ -50,6 +50,7 @@ func NewRouter(s *store.Store, planner ai.Planner) http.Handler {
 			r.Post("/days/{date}/ai-suggest", a.aiSuggest)
 			r.Post("/days/{date}/ai-apply", a.aiApply)
 			r.Get("/calendar", a.getCalendar)
+			r.Get("/stats", a.getStats)
 
 			r.Post("/blocks", a.createBlock)
 			r.Patch("/blocks/{id}", a.updateBlock)

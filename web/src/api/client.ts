@@ -1,4 +1,4 @@
-import type { Block, BrainDumpItem, CalendarMonth, Day, SuggestedBlock, Suggestion } from './types'
+import type { Block, BrainDumpItem, CalendarMonth, Day, Stats, SuggestedBlock, Suggestion } from './types'
 
 export const OVERLAP_MESSAGE = '다른 블록과 시간이 겹쳐요'
 
@@ -27,6 +27,7 @@ export type BrainDumpPatch = Partial<Pick<BrainDumpItem, 'title' | 'estimateBoxe
 export const api = {
   getDay: (date: string) => request<Day>(`/days/${date}`),
   getCalendar: (month: string) => request<CalendarMonth>(`/calendar?month=${month}`),
+  getStats: (from: string, to: string) => request<Stats>(`/stats?from=${from}&to=${to}`),
 
   createBlock: (b: NewBlock) => request<Block>('/blocks', { method: 'POST', body: JSON.stringify(b) }),
   updateBlock: (id: string, p: BlockPatch) =>

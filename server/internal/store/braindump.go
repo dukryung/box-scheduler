@@ -117,3 +117,26 @@ func (s *Store) CarryOver(ctx context.Context, userID, from, to string) ([]Brain
 	}
 	return items, mapErr(rows.Err())
 }
+
+// BrainDumpStatusCounts counts items by status for dates in [from, to].
+func (s *Store) BrainDumpStatusCounts(ctx context.Context, userID, from, to string) (map[string]int, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT status, count(*) FROM brain_dump_items
+		WHERE user_id = $1 AND date BETWEEN $2 AND $3
+		GROUP BY status`, userID, from, to)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+
+	counts := map[string]int{"open": 0, "done": 0, "carried": 0, "dropped": 0}
+	for rows.Next() {
+		var status string
+		var n int
+		if err := rows.Scan(&status, &n); err != nil {
+			return nil, err
+		}
+		counts[status] = n
+	}
+	return counts, mapErr(rows.Err())
+}

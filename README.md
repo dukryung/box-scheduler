@@ -49,6 +49,7 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 |---|---|
 | `/day/YYYY-MM-DD` | 일간 시간표 + Brain Dump |
 | `/month/YYYY-MM` | 월간 달력 (날짜별 블록 요약, 클릭 시 일간으로 이동) |
+| `/stats?range=7d` | 통계 (`7d`, `30d`, `month`, `last-month`) |
 | `/` | 오늘 일간 화면으로 이동 |
 
 ## 슬롯 규칙
@@ -67,6 +68,7 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | POST | `/api/days/{date}/carry-over` | 그날의 미완료(open) Brain Dump 항목을 `{to}` 날짜로 복사, 원본은 `carried` 처리 |
 | POST | `/api/days/{date}/ai-suggest` | AI 일정 제안 `{fromSlot, toSlot}` (저장하지 않음) |
 | POST | `/api/days/{date}/ai-apply` | 수락한 제안 블록 일괄 저장 (겹치면 전체 409) |
+| GET | `/api/stats?from=YYYY-MM-DD&to=YYYY-MM-DD` | 기간 통계: 합계, 날짜별·시간대별 계획/완료, 상위 작업, Brain Dump 상태 수 (최대 1년) |
 | GET | `/api/calendar?month=YYYY-MM` | 월간 요약 (날짜별 상위 3개 블록, 개수, 계획/완료 박스) |
 | POST | `/api/blocks` | 블록 생성 `{date, startSlot, endSlot, title, color?, brainDumpId?}` |
 | PATCH | `/api/blocks/{id}` | 블록 수정 (이동/리사이즈/완료) |

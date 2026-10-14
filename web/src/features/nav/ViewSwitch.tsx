@@ -2,7 +2,7 @@ import { Link } from 'react-router'
 import { monthOf } from '../../lib/date'
 
 interface Props {
-  view: 'day' | 'month'
+  view: 'day' | 'month' | 'stats'
   /** Day to open in day view, and whose month to open in month view. */
   date: string
 }
@@ -17,6 +17,9 @@ export function ViewSwitch({ view, date }: Props) {
       </Link>
       <Link to={`/month/${monthOf(date)}`} className={tab(view === 'month')} aria-current={view === 'month' ? 'page' : undefined}>
         월
+      </Link>
+      <Link to="/stats" className={tab(view === 'stats')} aria-current={view === 'stats' ? 'page' : undefined}>
+        통계
       </Link>
     </nav>
   )
