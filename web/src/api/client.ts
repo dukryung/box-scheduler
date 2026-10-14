@@ -1,4 +1,15 @@
-import type { Block, BrainDumpItem, CalendarMonth, Day, Stats, SuggestedBlock, Suggestion } from './types'
+import type {
+  AssistantOp,
+  AssistantPreview,
+  AssistantTurn,
+  Block,
+  BrainDumpItem,
+  CalendarMonth,
+  Day,
+  Stats,
+  SuggestedBlock,
+  Suggestion,
+} from './types'
 
 export const OVERLAP_MESSAGE = '다른 블록과 시간이 겹쳐요'
 
@@ -48,6 +59,12 @@ export const api = {
       body: JSON.stringify({ fromSlot, toSlot }),
       signal,
     }),
+  assistantPreview: (
+    body: { message: string; history: AssistantTurn[]; viewDate: string; today: string; now: string },
+    signal?: AbortSignal,
+  ) => request<AssistantPreview>('/assistant/preview', { method: 'POST', body: JSON.stringify(body), signal }),
+  assistantApply: (ops: AssistantOp[]) =>
+    request<{ undo: AssistantOp[] }>('/assistant/apply', { method: 'POST', body: JSON.stringify({ ops }) }),
   aiApply: (date: string, blocks: SuggestedBlock[], estimates: Suggestion['estimates']) =>
     request<Block[]>(`/days/${date}/ai-apply`, {
       method: 'POST',

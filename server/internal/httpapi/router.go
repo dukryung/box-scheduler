@@ -4,6 +4,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,10 +24,10 @@ const userIDKey ctxKey = iota
 
 type API struct {
 	store   *store.Store
-	planner ai.Planner
+	planner ai.Provider
 }
 
-func NewRouter(s *store.Store, planner ai.Planner) http.Handler {
+func NewRouter(s *store.Store, planner ai.Provider) http.Handler {
 	a := &API{store: s, planner: planner}
 
 	r := chi.NewRouter()
@@ -42,13 +43,15 @@ func NewRouter(s *store.Store, planner ai.Planner) http.Handler {
 
 		r.Group(func(r chi.Router) {
 			r.Use(singleUser)
-			r.Use(timeoutExcept("/ai-suggest", 30*time.Second))
+			r.Use(timeoutExcept(30*time.Second, "/ai-suggest", "/assistant/preview"))
 
 			r.Get("/days/{date}", a.getDay)
 			r.Put("/days/{date}/note", a.putDayNote)
 			r.Post("/days/{date}/carry-over", a.carryOver)
 			r.Post("/days/{date}/ai-suggest", a.aiSuggest)
 			r.Post("/days/{date}/ai-apply", a.aiApply)
+			r.Post("/assistant/preview", a.assistantPreview)
+			r.Post("/assistant/apply", a.assistantApply)
 			r.Get("/calendar", a.getCalendar)
 			r.Get("/stats", a.getStats)
 
@@ -76,13 +79,13 @@ func userID(r *http.Request) string {
 }
 
 // timeoutExcept applies a request timeout to every route except those ending in
-// suffix (AI planning can take well over a minute).
-func timeoutExcept(suffix string, d time.Duration) func(http.Handler) http.Handler {
+// one of suffixes (AI calls can take well over a minute).
+func timeoutExcept(d time.Duration, suffixes ...string) func(http.Handler) http.Handler {
 	withTimeout := middleware.Timeout(d)
 	return func(next http.Handler) http.Handler {
 		timed := withTimeout(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.HasSuffix(r.URL.Path, suffix) {
+			if slices.ContainsFunc(suffixes, func(s string) bool { return strings.HasSuffix(r.URL.Path, s) }) {
 				next.ServeHTTP(w, r)
 				return
 			}

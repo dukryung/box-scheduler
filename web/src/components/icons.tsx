@@ -63,6 +63,19 @@ export const Sparkle = (p: IconProps) => (
   </Stroke>
 )
 
+export const Mic = (p: IconProps) => (
+  <Stroke {...p}>
+    <rect x="9" y="3" width="6" height="11" rx="3" />
+    <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+  </Stroke>
+)
+
+export const ArrowUp = (p: IconProps) => (
+  <Stroke strokeWidth={2.2} {...p}>
+    <path d="M12 19V5M6 11l6-6 6 6" />
+  </Stroke>
+)
+
 export const CalendarPlus = (p: IconProps) => (
   <Stroke {...p}>
     <rect x="3" y="5" width="18" height="16" rx="3" />

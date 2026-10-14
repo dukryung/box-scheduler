@@ -12,9 +12,9 @@ import (
 	"time"
 )
 
-// CLIPlanner runs Claude Code in print mode (`claude -p`), which uses the
+// cliCaller runs Claude Code in print mode (`claude -p`), which uses the
 // signed-in Claude subscription (CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token`).
-type CLIPlanner struct {
+type cliCaller struct {
 	Bin     string
 	Model   string
 	Timeout time.Duration
@@ -28,28 +28,32 @@ type cliResult struct {
 	StructuredOutput json.RawMessage `json:"structured_output"`
 }
 
-func (p *CLIPlanner) Plan(ctx context.Context, req PlanRequest) (Plan, error) {
-	if _, err := exec.LookPath(p.Bin); err != nil {
-		return Plan{}, fmt.Errorf("%w: %s not found", ErrNotConfigured, p.Bin)
+func (c *cliCaller) call(ctx context.Context, system, prompt string, schema map[string]any, out any) error {
+	if _, err := exec.LookPath(c.Bin); err != nil {
+		return fmt.Errorf("%w: %s not found", ErrNotConfigured, c.Bin)
+	}
+	schemaJSON, err := json.Marshal(schema)
+	if err != nil {
+		return err
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, p.Timeout)
+	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
 	defer cancel()
 
 	// Run in an empty directory with no tools, settings, MCP servers, or saved
 	// session, so the call is a single, self-contained completion.
 	dir, err := os.MkdirTemp("", "box-scheduler-ai-")
 	if err != nil {
-		return Plan{}, err
+		return err
 	}
 	defer os.RemoveAll(dir)
 
-	cmd := exec.CommandContext(ctx, p.Bin,
-		"-p", userPrompt(req),
+	cmd := exec.CommandContext(ctx, c.Bin,
+		"-p", prompt,
 		"--output-format", "json",
-		"--json-schema", schemaJSON(),
-		"--system-prompt", systemPrompt,
-		"--model", p.Model,
+		"--json-schema", string(schemaJSON),
+		"--system-prompt", system,
+		"--model", c.Model,
 		"--tools", "",
 		"--setting-sources", "",
 		"--strict-mcp-config",
@@ -62,7 +66,7 @@ func (p *CLIPlanner) Plan(ctx context.Context, req PlanRequest) (Plan, error) {
 
 	runErr := cmd.Run()
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return Plan{}, fmt.Errorf("claude timed out after %s", p.Timeout)
+		return fmt.Errorf("claude timed out after %s", c.Timeout)
 	}
 
 	// Claude Code prints its JSON result even when it exits non-zero, and the
@@ -70,22 +74,20 @@ func (p *CLIPlanner) Plan(ctx context.Context, req PlanRequest) (Plan, error) {
 	var res cliResult
 	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
 		if runErr != nil {
-			return Plan{}, fmt.Errorf("claude failed: %v: %s", runErr, firstLine(stderr.String()))
+			return fmt.Errorf("claude failed: %v: %s", runErr, firstLine(stderr.String()))
 		}
-		return Plan{}, fmt.Errorf("unexpected claude output: %s", firstLine(stdout.String()))
+		return fmt.Errorf("unexpected claude output: %s", firstLine(stdout.String()))
 	}
 	if res.IsError && strings.Contains(res.Result, "Not logged in") {
-		return Plan{}, fmt.Errorf("%w: %s", ErrNotConfigured, res.Result)
+		return fmt.Errorf("%w: %s", ErrNotConfigured, res.Result)
 	}
 	if runErr != nil || res.IsError || len(res.StructuredOutput) == 0 || string(res.StructuredOutput) == "null" {
-		return Plan{}, fmt.Errorf("claude returned no plan (%s): %s", res.Subtype, firstLine(res.Result))
+		return fmt.Errorf("claude returned no structured output (%s): %s", res.Subtype, firstLine(res.Result))
 	}
-
-	var plan Plan
-	if err := json.Unmarshal(res.StructuredOutput, &plan); err != nil {
-		return Plan{}, fmt.Errorf("plan did not match schema: %w", err)
+	if err := json.Unmarshal(res.StructuredOutput, out); err != nil {
+		return fmt.Errorf("output did not match schema: %w", err)
 	}
-	return plan, nil
+	return nil
 }
 
 // subscriptionEnv drops ANTHROPIC_API_KEY: in print mode Claude Code prefers an

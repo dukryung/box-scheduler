@@ -66,13 +66,39 @@ type Planner interface {
 	Plan(ctx context.Context, req PlanRequest) (Plan, error)
 }
 
+// Provider is everything the app asks of Claude.
+type Provider interface {
+	Planner
+	Assistant
+}
+
+// caller makes one Claude call whose output is constrained to schema and
+// decoded into out. The subscription CLI and the API key client implement it.
+type caller interface {
+	call(ctx context.Context, system, prompt string, schema map[string]any, out any) error
+}
+
+type claudeProvider struct{ c caller }
+
+func (p claudeProvider) Plan(ctx context.Context, req PlanRequest) (Plan, error) {
+	var plan Plan
+	err := p.c.call(ctx, systemPrompt, userPrompt(req), planSchema, &plan)
+	return plan, err
+}
+
+func (p claudeProvider) Interpret(ctx context.Context, req AssistantRequest) (AssistantReply, error) {
+	var reply AssistantReply
+	err := p.c.call(ctx, assistantSystemPrompt, assistantPrompt(req), assistantSchema, &reply)
+	return reply, err
+}
+
 // NewFromEnv picks the provider from AI_PROVIDER:
 //
 //	claude-cli     (default) `claude -p` using the Claude subscription (CLAUDE_CODE_OAUTH_TOKEN)
 //	anthropic-api  Messages API using ANTHROPIC_API_KEY
-//	fake           deterministic plans, for tests and offline development
-//	none           AI suggestions disabled
-func NewFromEnv() (Planner, string, error) {
+//	fake           deterministic answers, for tests and offline development
+//	none           AI features disabled
+func NewFromEnv() (Provider, string, error) {
 	provider := envOr("AI_PROVIDER", "claude-cli")
 	model := envOr("AI_MODEL", "claude-opus-5-5")
 	timeout, err := time.ParseDuration(envOr("AI_TIMEOUT", "180s"))
@@ -82,12 +108,12 @@ func NewFromEnv() (Planner, string, error) {
 
 	switch provider {
 	case "claude-cli":
-		return &CLIPlanner{Bin: envOr("CLAUDE_BIN", "claude"), Model: model, Timeout: timeout}, provider, nil
+		return claudeProvider{&cliCaller{Bin: envOr("CLAUDE_BIN", "claude"), Model: model, Timeout: timeout}}, provider, nil
 	case "anthropic-api":
 		if os.Getenv("ANTHROPIC_API_KEY") == "" {
 			return disabled{}, provider, nil
 		}
-		return NewAPIPlanner(model, timeout), provider, nil
+		return claudeProvider{newAPICaller(model, timeout)}, provider, nil
 	case "fake":
 		return Fake{}, provider, nil
 	case "none":
@@ -100,6 +126,10 @@ func NewFromEnv() (Planner, string, error) {
 type disabled struct{}
 
 func (disabled) Plan(context.Context, PlanRequest) (Plan, error) { return Plan{}, ErrNotConfigured }
+
+func (disabled) Interpret(context.Context, AssistantRequest) (AssistantReply, error) {
+	return AssistantReply{}, ErrNotConfigured
+}
 
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {

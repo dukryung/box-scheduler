@@ -36,6 +36,8 @@ export interface GhostBlock {
   range: SlotRange
   title: string
   highlighted: boolean
+  /** 'remove' outlines a block that the pending change would delete. */
+  variant?: 'add' | 'remove'
 }
 
 export interface GridAnchor {
@@ -281,17 +283,23 @@ export function TimeGrid({
                   key={`ghost-${g.key}-${seg.row}`}
                   data-ghost={g.key}
                   style={{ gridRow: seg.row + 1, gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 1}` }}
+                  data-ghost-variant={g.variant ?? 'add'}
                   className={[
-                    'pointer-events-none z-20 m-[3px] flex items-center gap-1.5 overflow-hidden rounded-lg border-[1.5px] border-dashed border-ai px-2.5 text-xs font-semibold text-ai-ink md:text-[13px]',
-                    g.highlighted ? 'ai-ghost-active bg-ai/20' : 'bg-ai/[0.07]',
+                    'pointer-events-none z-20 m-[3px] flex items-center gap-1.5 overflow-hidden rounded-lg border-[1.5px] border-dashed px-2.5 text-xs font-semibold md:text-[13px]',
+                    g.variant === 'remove'
+                      ? 'border-danger bg-danger/10 text-danger'
+                      : `border-ai text-ai-ink ${g.highlighted ? 'ai-ghost-active bg-ai/20' : 'bg-ai/[0.07]'}`,
                   ].join(' ')}
                 >
-                  {i === labelIdx && (
-                    <>
-                      <Sparkle size={13} className="shrink-0" />
-                      <span className="truncate">{g.title}</span>
-                    </>
-                  )}
+                  {i === labelIdx &&
+                    (g.variant === 'remove' ? (
+                      <span className="truncate rounded bg-surface/90 px-1.5">삭제 예정</span>
+                    ) : (
+                      <>
+                        <Sparkle size={13} className="shrink-0" />
+                        <span className="truncate">{g.title}</span>
+                      </>
+                    ))}
                 </div>
               ))
             })}

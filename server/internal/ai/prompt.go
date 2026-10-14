@@ -54,11 +54,6 @@ var planSchema = map[string]any{
 	"additionalProperties": false,
 }
 
-func schemaJSON() string {
-	b, _ := json.Marshal(planSchema)
-	return string(b)
-}
-
 func userPrompt(req PlanRequest) string {
 	ctx, _ := json.MarshalIndent(req, "", "  ")
 	var b strings.Builder

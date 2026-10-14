@@ -83,3 +83,47 @@ export interface Stats {
   topTasks: Array<BoxCount & { title: string }>
   brainDump: Record<'open' | 'done' | 'carried' | 'dropped', number>
 }
+
+/** One edit proposed by the assistant; sent back unchanged to apply it. */
+export interface AssistantOp {
+  kind: string
+  blockId?: string
+  itemId?: string
+  date?: string
+  startSlot?: number
+  endSlot?: number
+  title?: string
+  done?: boolean
+  color?: string
+  brainDumpId?: string
+  source?: string
+  estimateBoxes?: number
+  status?: string
+}
+
+export interface AssistantSpan {
+  date: string
+  startSlot: number
+  endSlot: number
+}
+
+export interface AssistantChange {
+  kind: 'add' | 'move' | 'edit' | 'done' | 'undone' | 'remove' | 'item-add' | 'item-edit' | 'item-remove'
+  title: string
+  before?: AssistantSpan
+  after?: AssistantSpan
+  detail?: string
+}
+
+export interface AssistantPreview {
+  reply: string
+  clarification: string
+  ops: AssistantOp[]
+  changes: AssistantChange[]
+  warnings: string[]
+}
+
+export interface AssistantTurn {
+  role: 'user' | 'assistant'
+  text: string
+}

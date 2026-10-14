@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { OVERLAP_MESSAGE } from '../../api/client'
-import { ChevronLeft, ChevronRight, Plus, Sparkle } from '../../components/icons'
+import { OVERLAP_MESSAGE, api } from '../../api/client'
+import type { AssistantOp } from '../../api/types'
+import { ChevronLeft, ChevronRight, Mic, Plus, Sparkle } from '../../components/icons'
 import { card, iconButton } from '../../components/styles'
 import { WEEKDAYS, addDays, parseISODate, todayISO } from '../../lib/date'
 import { SLOT_MINUTES, nextBoundary, slotToTime, type SlotRange } from '../../lib/slots'
@@ -10,13 +11,15 @@ import { useIsMobile } from '../../lib/useIsMobile'
 import { useDayStore } from '../../store/dayStore'
 import { AIPanel } from '../ai/AIPanel'
 import { useAISuggestion } from '../ai/useAISuggestion'
+import { AssistantBar, AssistantPanel } from '../assistant/Assistant'
+import { useAssistant } from '../assistant/useAssistant'
 import { BrainDumpPanel } from '../braindump/BrainDumpPanel'
 import type { DraggedItem } from '../braindump/drop'
 import { PlaceSheet } from '../braindump/PlaceSheet'
 import { BottomTabs, TopBar, ViewSwitch } from '../nav/ViewSwitch'
 import { BlockPopover } from './BlockPopover'
 import { DEFAULT_BLOCK_COLOR } from './colors'
-import { TimeGrid, type GridAnchor } from './TimeGrid'
+import { TimeGrid, type GhostBlock, type GridAnchor } from './TimeGrid'
 
 type Popover = { mode: 'create'; range: SlotRange; at: GridAnchor } | { mode: 'edit'; id: string; at: GridAnchor }
 
@@ -46,7 +49,12 @@ export function DayView({ date }: { date: string }) {
   const [mobileTab, setMobileTab] = useState<'grid' | 'braindump'>('grid')
   const [notice, setNotice] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const assistantInputRef = useRef<HTMLInputElement>(null)
+  const [assistantSheet, setAssistantSheet] = useState(false)
+  const [undoable, setUndoable] = useState<{ ops: AssistantOp[]; count: number } | null>(null)
   const ai = useAISuggestion(date)
+  const assistant = useAssistant(date)
+  const resetAssistant = assistant.reset
   const nowSlot = useNowSlot()
   const isToday = date === todayISO()
   const d = parseISODate(date)
@@ -55,8 +63,27 @@ export function DayView({ date }: { date: string }) {
   useEffect(() => {
     setPopover(null)
     setPlacing(null)
+    resetAssistant()
     void setDate(date)
-  }, [date, setDate])
+  }, [date, setDate, resetAssistant])
+
+  useEffect(() => {
+    if (!undoable) return
+    const id = setTimeout(() => setUndoable(null), 10_000)
+    return () => clearTimeout(id)
+  }, [undoable])
+
+  // ⌘K / Ctrl+K jumps to the request bar on desktop.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        assistantInputRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
     if (!error) return
@@ -79,7 +106,7 @@ export function DayView({ date }: { date: string }) {
     setMobileTab('grid')
     setAiOpen(true)
   }
-  const ghosts =
+  const suggestionGhosts: GhostBlock[] =
     aiOpen && ai.suggestion
       ? ai.accepted.map((b) => ({
           key: ai.blockKey(b),
@@ -88,6 +115,40 @@ export function DayView({ date }: { date: string }) {
           highlighted: ai.hovered === ai.blockKey(b),
         }))
       : []
+  // Pending assistant edits on this day: new/moved positions in violet, deletions in red.
+  const assistantGhosts: GhostBlock[] =
+    assistant.status === 'ready' && assistant.preview
+      ? assistant.preview.changes.flatMap((c, i): GhostBlock[] => {
+          if ((c.kind === 'add' || c.kind === 'move') && c.after?.date === date)
+            return [{ key: `asst-${i}`, range: { start: c.after.startSlot, end: c.after.endSlot }, title: c.title, highlighted: false }]
+          if (c.kind === 'remove' && c.before?.date === date)
+            return [{ key: `asst-${i}`, range: { start: c.before.startSlot, end: c.before.endSlot }, title: c.title, highlighted: false, variant: 'remove' }]
+          return []
+        })
+      : []
+  const ghosts = [...suggestionGhosts, ...assistantGhosts]
+
+  const closeAssistant = () => {
+    assistant.reset()
+    setAssistantSheet(false)
+  }
+  const onAssistantApplied = (res: { undo: AssistantOp[]; count: number }) => {
+    setAssistantSheet(false)
+    void reload()
+    setUndoable({ ops: res.undo, count: res.count })
+  }
+  const undoAssistant = async () => {
+    if (!undoable) return
+    const ops = undoable.ops
+    setUndoable(null)
+    try {
+      await api.assistantApply(ops)
+      setNotice('되돌렸어요')
+    } catch (e) {
+      setError((e as Error).message)
+    }
+    void reload()
+  }
 
   const go = (iso: string) => navigate(`/day/${iso}`)
   const closePopover = useCallback(() => setPopover(null), [])
@@ -172,6 +233,16 @@ export function DayView({ date }: { date: string }) {
 
         <ViewSwitch view="day" date={date} />
         <button
+          onClick={() => {
+            closeAI()
+            setAssistantSheet(true)
+          }}
+          aria-label="말로 요청하기"
+          className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-ai-line text-ai-ink md:hidden"
+        >
+          <Mic size={18} />
+        </button>
+        <button
           onClick={() => (aiOpen ? closeAI() : openAI())}
           aria-pressed={aiOpen}
           aria-label="AI 제안"
@@ -185,7 +256,20 @@ export function DayView({ date }: { date: string }) {
         </button>
       </TopBar>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-3 pb-[88px] md:flex-row md:gap-5 md:px-6 md:py-5">
+      {!mobile && (
+        <div className="relative px-6 pt-4">
+          <div className="max-w-[720px]">
+            <AssistantBar assistant={assistant} inputRef={assistantInputRef} showShortcut />
+          </div>
+          {(assistant.status !== 'idle' || assistant.error) && (
+            <div className="absolute top-full left-6 z-30 mt-2 w-[min(720px,calc(100%-48px))] rounded-2xl border border-line bg-surface p-4 shadow-xl">
+              <AssistantPanel assistant={assistant} viewDate={date} onApplied={onAssistantApplied} onClose={closeAssistant} />
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="flex min-h-0 flex-1 flex-col gap-3 px-4 pt-3 pb-[88px] md:flex-row md:gap-5 md:px-6 md:pt-4 md:pb-5">
         {mobile && !aiOpen && (
           <div role="tablist" aria-label="일간 보기" className="flex rounded-[10px] bg-subtle p-[3px]">
             {(
@@ -270,6 +354,39 @@ export function DayView({ date }: { date: string }) {
           <span className="mb-2 h-[5px] w-10 shrink-0 self-center rounded-full bg-line-strong" />
           <div className="min-h-0 flex-1 overflow-y-auto">{aiPanel}</div>
         </section>
+      )}
+
+      {mobile && assistantSheet && (
+        <>
+          <div className="fixed inset-0 z-40 bg-[rgba(21,23,28,0.42)]" onPointerDown={closeAssistant} />
+          <section
+            role="dialog"
+            aria-label="말로 요청하기"
+            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[80dvh] flex-col gap-3 overflow-y-auto rounded-t-[22px] border border-line bg-surface px-4 pt-2.5 pb-[max(env(safe-area-inset-bottom),20px)] shadow-[0_-8px_24px_rgba(21,23,28,0.14)]"
+          >
+            <span className="h-[5px] w-10 shrink-0 self-center rounded-full bg-line-strong" />
+            <h2 className="text-[17px] font-bold">말로 요청하기</h2>
+            <AssistantBar assistant={assistant} listenOnMount />
+            <AssistantPanel assistant={assistant} viewDate={date} onApplied={onAssistantApplied} onClose={closeAssistant} />
+            {assistant.status === 'idle' && !assistant.error && (
+              <p className="text-[13px] leading-relaxed text-muted">
+                예: “헬스장 8시로 미뤄줘”, “내일 오후 3시에 치과 1시간 넣어줘”, “코드 리뷰 완료했어”
+              </p>
+            )}
+          </section>
+        </>
+      )}
+
+      {undoable && (
+        <div
+          role="status"
+          className="fixed bottom-24 left-1/2 z-50 flex max-w-[calc(100vw-32px)] -translate-x-1/2 items-center gap-3 rounded-xl bg-ink py-2 pr-2 pl-4 text-sm text-surface shadow-lg md:bottom-6"
+        >
+          {undoable.count}개를 바꿨어요
+          <button onClick={() => void undoAssistant()} className="rounded-lg px-3 py-1.5 font-semibold text-accent-soft hover:bg-white/10">
+            되돌리기
+          </button>
+        </div>
       )}
 
       {placing && (
