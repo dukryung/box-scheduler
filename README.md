@@ -19,6 +19,23 @@ docker compose up -d --build
 
 DB 마이그레이션은 `api`가 시작할 때 자동으로 적용된다.
 
+### AI 일정 제안 설정
+
+기본값(`AI_PROVIDER=claude-cli`)은 Claude 구독으로 `claude -p`를 실행한다.
+
+```sh
+claude setup-token          # 1년짜리 토큰 발급 (Pro/Max 등 구독 필요)
+# 발급된 토큰을 .env 의 CLAUDE_CODE_OAUTH_TOKEN= 에 넣고
+docker compose up -d api
+```
+
+- 구독 사용량 한도를 Claude Code와 함께 쓴다. 개인용으로만 사용할 것.
+- `ANTHROPIC_API_KEY`는 비워둔다. CLI 모드에서는 서버가 이 값을 지우고 실행하지만, 실수로 과금되지 않도록 비워두는 것이 안전하다.
+- API 키 방식으로 바꾸려면 `AI_PROVIDER=anthropic-api` + `ANTHROPIC_API_KEY`를 설정한다.
+- `AI_PROVIDER=fake`는 Claude를 부르지 않는 고정 응답(테스트용), `none`은 기능 끔.
+
+AI는 할 일의 소요 시간 추정·분할·우선순위·선호 시간대만 정하고, 실제 배치는 서버의 `internal/scheduler`가 빈 시간에 겹치지 않게 한다.
+
 ### 프론트엔드 개발 모드
 
 ```sh
@@ -48,6 +65,8 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | GET | `/api/days/{date}` | 하루치 블록 + Brain Dump + 메모 |
 | PUT | `/api/days/{date}/note` | 하루 메모 저장 `{note}` |
 | POST | `/api/days/{date}/carry-over` | 그날의 미완료(open) Brain Dump 항목을 `{to}` 날짜로 복사, 원본은 `carried` 처리 |
+| POST | `/api/days/{date}/ai-suggest` | AI 일정 제안 `{fromSlot, toSlot}` (저장하지 않음) |
+| POST | `/api/days/{date}/ai-apply` | 수락한 제안 블록 일괄 저장 (겹치면 전체 409) |
 | GET | `/api/calendar?month=YYYY-MM` | 월간 요약 (날짜별 상위 3개 블록, 개수, 계획/완료 박스) |
 | POST | `/api/blocks` | 블록 생성 `{date, startSlot, endSlot, title, color?, brainDumpId?}` |
 | PATCH | `/api/blocks/{id}` | 블록 수정 (이동/리사이즈/완료) |

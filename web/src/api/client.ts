@@ -1,4 +1,4 @@
-import type { Block, BrainDumpItem, CalendarMonth, Day } from './types'
+import type { Block, BrainDumpItem, CalendarMonth, Day, SuggestedBlock, Suggestion } from './types'
 
 export const OVERLAP_MESSAGE = '다른 블록과 시간이 겹쳐요'
 
@@ -40,4 +40,19 @@ export const api = {
   deleteBrainDump: (id: string) => request<void>(`/brain-dump/${id}`, { method: 'DELETE' }),
   carryOver: (from: string, to: string) =>
     request<BrainDumpItem[]>(`/days/${from}/carry-over`, { method: 'POST', body: JSON.stringify({ to }) }),
+
+  aiSuggest: (date: string, fromSlot: number, toSlot: number, signal?: AbortSignal) =>
+    request<Suggestion>(`/days/${date}/ai-suggest`, {
+      method: 'POST',
+      body: JSON.stringify({ fromSlot, toSlot }),
+      signal,
+    }),
+  aiApply: (date: string, blocks: SuggestedBlock[], estimates: Suggestion['estimates']) =>
+    request<Block[]>(`/days/${date}/ai-apply`, {
+      method: 'POST',
+      body: JSON.stringify({
+        blocks: blocks.map(({ taskId, title, startSlot, endSlot }) => ({ taskId, title, startSlot, endSlot })),
+        estimates,
+      }),
+    }),
 }

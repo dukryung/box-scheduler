@@ -25,6 +25,14 @@ type Drag =
   | { kind: 'move'; id: string; grabOffset: number; origin: SlotRange; range: SlotRange }
   | { kind: 'resize'; edge: 'start' | 'end'; id: string; origin: SlotRange; range: SlotRange }
 
+/** A not-yet-saved block (an AI suggestion) drawn as a dashed preview. */
+export interface GhostBlock {
+  key: string
+  range: SlotRange
+  title: string
+  highlighted: boolean
+}
+
 export interface GridAnchor {
   x: number
   y: number
@@ -43,6 +51,7 @@ interface Props {
   /** Length in boxes of a brain dump item currently being dragged, if any. */
   dropBoxes: number | null
   onItemDrop: (range: SlotRange) => void
+  ghosts: GhostBlock[]
 }
 
 const toRange = (b: Block): SlotRange => ({ start: b.startSlot, end: b.endSlot })
@@ -57,6 +66,7 @@ export function TimeGrid({
   onInvalidDrop,
   dropBoxes,
   onItemDrop,
+  ghosts,
 }: Props) {
   const cellsRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -235,15 +245,31 @@ export function TimeGrid({
                 </div>
               ))}
 
+            {ghosts.map((g) => {
+              const segments = rowSegments(g.range)
+              const labelIdx = widestSegment(segments)
+              return segments.map((seg, i) => (
+                <div
+                  key={`ghost-${g.key}-${seg.row}`}
+                  data-ghost={g.key}
+                  style={{ gridRow: seg.row + 1, gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 1}` }}
+                  className={[
+                    'pointer-events-none z-20 m-0.5 flex items-center overflow-hidden rounded-md border-2 border-dashed px-2 text-xs font-medium',
+                    g.highlighted
+                      ? 'border-violet-600 bg-violet-500/30 text-violet-900 dark:text-violet-100'
+                      : 'border-violet-400 bg-violet-500/10 text-violet-700 dark:text-violet-300',
+                  ].join(' ')}
+                >
+                  {i === labelIdx && <span className="truncate">✨ {g.title}</span>}
+                </div>
+              ))
+            })}
+
             {blocks.map((block) => {
               const isDragged = block.id === draggedId
               const range = isDragged ? drag!.range : toRange(block)
               const segments = rowSegments(range)
-              // Put the label on the widest piece so it is readable when a block wraps rows.
-              const labelIdx = segments.reduce(
-                (best, s, i) => (s.colEnd - s.colStart > segments[best].colEnd - segments[best].colStart ? i : best),
-                0,
-              )
+              const labelIdx = widestSegment(segments)
               return segments.map((seg, i) => {
                 const first = i === 0
                 const last = i === segments.length - 1
@@ -268,6 +294,7 @@ export function TimeGrid({
                   >
                     {i === labelIdx && (
                       <span className={`truncate font-medium ${block.done ? 'line-through' : ''}`}>
+                        {block.source === 'ai' && '✨ '}
                         {block.title}
                         {isDragged && <span className="ml-1 font-normal opacity-80">{formatRange(range)}</span>}
                       </span>
@@ -282,5 +309,13 @@ export function TimeGrid({
         </div>
       </div>
     </div>
+  )
+}
+
+/** Index of the widest row piece, so a label stays readable when a block wraps rows. */
+function widestSegment(segments: Array<{ colStart: number; colEnd: number }>): number {
+  return segments.reduce(
+    (best, s, i) => (s.colEnd - s.colStart > segments[best].colEnd - segments[best].colStart ? i : best),
+    0,
   )
 }

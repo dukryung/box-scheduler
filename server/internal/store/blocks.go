@@ -91,3 +91,59 @@ func (s *Store) DeleteBlock(ctx context.Context, userID, id string) error {
 	}
 	return nil
 }
+
+// RecentDoneBlocks returns completed blocks from the `days` days before `before`,
+// newest first, as reference for how long similar work really took.
+func (s *Store) RecentDoneBlocks(ctx context.Context, userID, before string, days, limit int) ([]Block, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+blockCols+` FROM time_blocks
+		WHERE user_id = $1 AND done AND date < $2 AND date >= $2::date - $3::int
+		ORDER BY date DESC, start_slot
+		LIMIT $4`, userID, before, days, limit)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+
+	blocks := []Block{}
+	for rows.Next() {
+		b, err := scanBlock(rows)
+		if err != nil {
+			return nil, err
+		}
+		blocks = append(blocks, b)
+	}
+	return blocks, mapErr(rows.Err())
+}
+
+// ApplyPlan inserts accepted AI blocks and fills in missing brain dump estimates,
+// all or nothing: one overlapping block rejects the whole plan.
+func (s *Store) ApplyPlan(ctx context.Context, userID string, blocks []Block, estimates map[string]int) ([]Block, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	created := make([]Block, 0, len(blocks))
+	for _, b := range blocks {
+		row := tx.QueryRow(ctx, `
+			INSERT INTO time_blocks (user_id, date, start_slot, end_slot, title, color, brain_dump_id, source)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, 'ai')
+			RETURNING `+blockCols,
+			userID, b.Date, b.StartSlot, b.EndSlot, b.Title, b.Color, b.BrainDumpID)
+		c, err := scanBlock(row)
+		if err != nil {
+			return nil, mapErr(err)
+		}
+		created = append(created, c)
+	}
+	for id, boxes := range estimates {
+		if _, err := tx.Exec(ctx, `
+			UPDATE brain_dump_items SET estimate_boxes = $3
+			WHERE user_id = $1 AND id = $2 AND estimate_boxes IS NULL`, userID, id, boxes); err != nil {
+			return nil, mapErr(err)
+		}
+	}
+	return created, mapErr(tx.Commit(ctx))
+}

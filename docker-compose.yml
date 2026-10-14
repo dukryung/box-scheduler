@@ -20,6 +20,11 @@ services:
     environment:
       DATABASE_URL: postgres://boxscheduler:${POSTGRES_PASSWORD:-boxscheduler}@db:5432/boxscheduler?sslmode=disable
       PORT: "8080"
+      # claude-cli (subscription token) | anthropic-api (API key) | fake | none
+      AI_PROVIDER: ${AI_PROVIDER:-claude-cli}
+      AI_MODEL: ${AI_MODEL:-claude-opus-5-5}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:
       db:
         condition: service_healthy

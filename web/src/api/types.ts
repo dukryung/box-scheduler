@@ -50,3 +50,19 @@ export interface CalendarMonth {
   month: string
   days: Record<string, CalendarDay>
 }
+
+export interface SuggestedBlock {
+  taskId: string
+  title: string
+  startSlot: number
+  endSlot: number
+  reason: string
+}
+
+export interface Suggestion {
+  blocks: SuggestedBlock[]
+  unplaced: Array<{ taskId: string; title: string; boxes: number }>
+  /** AI estimates for tasks that had none; saved when the plan is applied. */
+  estimates: Array<{ taskId: string; estimateBoxes: number }>
+  notes: string
+}

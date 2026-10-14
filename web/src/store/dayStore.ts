@@ -17,6 +17,8 @@ interface DayState {
   error: string | null
 
   setDate: (date: string) => Promise<void>
+  /** Re-fetches the current day, e.g. after the server changed it in bulk. */
+  reload: () => Promise<void>
   createBlock: (b: NewBlock) => Promise<void>
   updateBlock: (id: string, patch: BlockPatch) => Promise<void>
   deleteBlock: (id: string) => Promise<void>
@@ -50,6 +52,8 @@ export const useDayStore = create<DayState>((set, get) => ({
       if (get().date === date) set({ loading: false, error: (e as Error).message })
     }
   },
+
+  reload: () => get().setDate(get().date),
 
   createBlock: async (draft) => {
     const id = tempId()

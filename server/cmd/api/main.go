@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
+	"box-scheduler/server/internal/ai"
 	"box-scheduler/server/internal/httpapi"
 	"box-scheduler/server/internal/store"
 	"box-scheduler/server/migrations"
@@ -47,9 +48,15 @@ func run() error {
 		return err
 	}
 
+	planner, provider, err := ai.NewFromEnv()
+	if err != nil {
+		return err
+	}
+	slog.Info("ai planner", "provider", provider)
+
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           httpapi.NewRouter(store.New(pool)),
+		Handler:           httpapi.NewRouter(store.New(pool), planner),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

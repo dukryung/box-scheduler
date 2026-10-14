@@ -4,6 +4,8 @@ import { OVERLAP_MESSAGE } from '../../api/client'
 import { addDays, formatDayTitle, todayISO } from '../../lib/date'
 import { SLOT_MINUTES, type SlotRange } from '../../lib/slots'
 import { useDayStore } from '../../store/dayStore'
+import { AIPanel } from '../ai/AIPanel'
+import { useAISuggestion } from '../ai/useAISuggestion'
 import { BrainDumpPanel, type DraggedItem } from '../braindump/BrainDumpPanel'
 import { ViewSwitch } from '../nav/ViewSwitch'
 import { BlockPopover } from './BlockPopover'
@@ -27,10 +29,13 @@ function useNowSlot(): number {
 }
 
 export function DayView({ date }: { date: string }) {
-  const { blocks, error, setDate, createBlock, updateBlock, deleteBlock, setError } = useDayStore()
+  const { blocks, error, setDate, reload, createBlock, updateBlock, deleteBlock, setError } = useDayStore()
   const navigate = useNavigate()
   const [popover, setPopover] = useState<Popover | null>(null)
   const [dragged, setDragged] = useState<DraggedItem | null>(null)
+  const [aiOpen, setAiOpen] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const ai = useAISuggestion(date)
   const nowSlot = useNowSlot()
   const isToday = date === todayISO()
 
@@ -45,6 +50,26 @@ export function DayView({ date }: { date: string }) {
     const id = setTimeout(() => setError(null), 3000)
     return () => clearTimeout(id)
   }, [error, setError])
+
+  useEffect(() => {
+    if (!notice) return
+    const id = setTimeout(() => setNotice(null), 3000)
+    return () => clearTimeout(id)
+  }, [notice])
+
+  const closeAI = () => {
+    ai.reset()
+    setAiOpen(false)
+  }
+  const ghosts =
+    aiOpen && ai.suggestion
+      ? ai.accepted.map((b) => ({
+          key: ai.blockKey(b),
+          range: { start: b.startSlot, end: b.endSlot },
+          title: b.title,
+          highlighted: ai.hovered === ai.blockKey(b),
+        }))
+      : []
 
   const go = (d: string) => navigate(`/day/${d}`)
   const closePopover = useCallback(() => setPopover(null), [])
@@ -69,6 +94,13 @@ export function DayView({ date }: { date: string }) {
           </button>
         )}
         <div className="ml-auto flex items-center gap-3">
+          <button
+            onClick={() => (aiOpen ? closeAI() : setAiOpen(true))}
+            aria-pressed={aiOpen}
+            className={`rounded-md px-3 py-1 text-sm ${aiOpen ? 'bg-violet-600 text-white' : 'border border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950'}`}
+          >
+            ✨ AI 제안
+          </button>
           <span className="hidden text-sm text-zinc-500 tabular-nums sm:inline">
             완료 {doneBoxes} / 계획 {plannedBoxes} 박스
           </span>
@@ -78,7 +110,21 @@ export function DayView({ date }: { date: string }) {
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         <aside className="max-h-[40vh] shrink-0 overflow-y-auto border-b border-zinc-200 lg:max-h-none lg:w-80 lg:border-r lg:border-b-0 dark:border-zinc-800">
-          <BrainDumpPanel key={date} onDragItem={setDragged} onNavigate={go} />
+          {aiOpen ? (
+            <AIPanel
+              key={date}
+              ai={ai}
+              nowSlot={isToday ? nowSlot : null}
+              onClose={closeAI}
+              onApplied={(count) => {
+                setAiOpen(false)
+                void reload()
+                setNotice(`AI 제안 ${count}개를 시간표에 추가했어요`)
+              }}
+            />
+          ) : (
+            <BrainDumpPanel key={date} onDragItem={setDragged} onNavigate={go} />
+          )}
         </aside>
 
         <main className="flex min-h-0 w-full max-w-5xl flex-1 flex-col px-4 py-3">
@@ -92,6 +138,7 @@ export function DayView({ date }: { date: string }) {
             onBlockChange={(id, range) => void updateBlock(id, { startSlot: range.start, endSlot: range.end })}
             onInvalidDrop={() => setError(OVERLAP_MESSAGE)}
             dropBoxes={dragged?.boxes ?? null}
+            ghosts={ghosts}
             onItemDrop={(range) => {
               if (!dragged) return
               void createBlock({
@@ -130,9 +177,9 @@ export function DayView({ date }: { date: string }) {
         />
       )}
 
-      {error && (
-        <div role="alert" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900">
-          {error}
+      {(error ?? notice) && (
+        <div role={error ? 'alert' : 'status'} className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900">
+          {error ?? notice}
         </div>
       )}
     </div>
