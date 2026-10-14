@@ -43,6 +43,7 @@ func NewRouter(s *store.Store) http.Handler {
 
 			r.Get("/days/{date}", a.getDay)
 			r.Put("/days/{date}/note", a.putDayNote)
+			r.Post("/days/{date}/carry-over", a.carryOver)
 			r.Get("/calendar", a.getCalendar)
 
 			r.Post("/blocks", a.createBlock)

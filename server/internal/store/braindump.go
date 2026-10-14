@@ -88,3 +88,32 @@ func (s *Store) DeleteBrainDump(ctx context.Context, userID, id string) error {
 	}
 	return nil
 }
+
+// CarryOver copies every open item of `from` into `to` as a new open item and
+// marks the originals 'carried', so each day keeps its own history.
+func (s *Store) CarryOver(ctx context.Context, userID, from, to string) ([]BrainDumpItem, error) {
+	rows, err := s.pool.Query(ctx, `
+		WITH src AS (
+			UPDATE brain_dump_items SET status = 'carried'
+			WHERE user_id = $1 AND date = $2 AND status = 'open'
+			RETURNING *
+		)
+		INSERT INTO brain_dump_items (user_id, date, title, estimate_boxes, priority, category, status, carried_from, created_at)
+		SELECT user_id, $3, title, estimate_boxes, priority, category, 'open', COALESCE(carried_from, date), created_at
+		FROM src
+		RETURNING `+brainDumpCols, userID, from, to)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+
+	items := []BrainDumpItem{}
+	for rows.Next() {
+		it, err := scanBrainDump(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, it)
+	}
+	return items, mapErr(rows.Err())
+}

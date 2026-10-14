@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Block } from '../../api/types'
 import { isTempId } from '../../store/dayStore'
 import {
@@ -6,6 +6,7 @@ import {
   SLOTS_PER_DAY,
   SLOTS_PER_HOUR,
   clamp,
+  fitRange,
   formatRange,
   isFree,
   nextBoundary,
@@ -39,6 +40,9 @@ interface Props {
   onBlockClick: (id: string, at: GridAnchor) => void
   onBlockChange: (id: string, range: SlotRange) => void
   onInvalidDrop: () => void
+  /** Length in boxes of a brain dump item currently being dragged, if any. */
+  dropBoxes: number | null
+  onItemDrop: (range: SlotRange) => void
 }
 
 const toRange = (b: Block): SlotRange => ({ start: b.startSlot, end: b.endSlot })
@@ -51,10 +55,13 @@ export function TimeGrid({
   onBlockClick,
   onBlockChange,
   onInvalidDrop,
+  dropBoxes,
+  onItemDrop,
 }: Props) {
   const cellsRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
+  const [dropRange, setDropRange] = useState<SlotRange | null>(null)
 
   // Start the view a little before "now" (or 08:00) instead of at midnight.
   useEffect(() => {
@@ -140,6 +147,22 @@ export function TimeGrid({
     }
   }
 
+  function handleDragOver(e: DragEvent<HTMLDivElement>) {
+    if (dropBoxes === null) return
+    const range = fitRange(slotFromPoint(e.clientX, e.clientY), dropBoxes, occupiedExcept())
+    setDropRange(range)
+    if (range) {
+      e.preventDefault() // allow the drop
+      e.dataTransfer.dropEffect = 'copy'
+    }
+  }
+
+  function handleDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault()
+    if (dropRange) onItemDrop(dropRange)
+    setDropRange(null)
+  }
+
   const draggedId = drag && drag.kind !== 'select' ? drag.id : null
   const dropInvalid = drag?.kind === 'move' && !isFree(drag.range, occupiedExcept(drag.id))
   const highlight = drag?.kind === 'select' ? drag.range : pendingRange
@@ -178,6 +201,9 @@ export function TimeGrid({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={() => setDrag(null)}
+            onDragOver={handleDragOver}
+            onDragLeave={(e) => !e.currentTarget.contains(e.relatedTarget as Node) && setDropRange(null)}
+            onDrop={handleDrop}
           >
             {Array.from({ length: SLOTS_PER_DAY }, (_, slot) => {
               const col = slot % SLOTS_PER_HOUR
@@ -196,6 +222,18 @@ export function TimeGrid({
                 />
               )
             })}
+
+            {dropBoxes !== null &&
+              dropRange &&
+              rowSegments(dropRange).map((seg, i) => (
+                <div
+                  key={`drop-${seg.row}`}
+                  style={{ gridRow: seg.row + 1, gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 1}` }}
+                  className="pointer-events-none z-20 m-0.5 flex items-center rounded-md border-2 border-dashed border-indigo-500 bg-indigo-500/10 px-2 text-xs font-medium text-indigo-700 dark:text-indigo-300"
+                >
+                  {i === 0 && formatRange(dropRange)}
+                </div>
+              ))}
 
             {blocks.map((block) => {
               const isDragged = block.id === draggedId

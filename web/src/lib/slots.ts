@@ -16,11 +16,13 @@ export function slotToTime(slot: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
-export function formatRange({ start, end }: SlotRange): string {
-  const boxes = end - start
+export function formatDuration(boxes: number): string {
   const mins = boxes * SLOT_MINUTES
-  const duration = mins >= 60 ? `${Math.floor(mins / 60)}시간${mins % 60 ? ` ${mins % 60}분` : ''}` : `${mins}분`
-  return `${slotToTime(start)}–${slotToTime(end)} · ${duration}`
+  return mins >= 60 ? `${Math.floor(mins / 60)}시간${mins % 60 ? ` ${mins % 60}분` : ''}` : `${mins}분`
+}
+
+export function formatRange({ start, end }: SlotRange): string {
+  return `${slotToTime(start)}–${slotToTime(end)} · ${formatDuration(end - start)}`
 }
 
 export function overlaps(a: SlotRange, b: SlotRange): boolean {
@@ -73,4 +75,13 @@ export function selectionRange(anchor: number, current: number, occupied: SlotRa
 
 export function isFree(range: SlotRange, occupied: SlotRange[]): boolean {
   return range.start >= 0 && range.end <= SLOTS_PER_DAY && !occupied.some((r) => overlaps(range, r))
+}
+
+/**
+ * Where an item of `boxes` length lands when dropped on `slot`: it starts there
+ * and is cut short by the next block. Null when `slot` itself is taken.
+ */
+export function fitRange(slot: number, boxes: number, occupied: SlotRange[]): SlotRange | null {
+  if (!isFree({ start: slot, end: slot + 1 }, occupied)) return null
+  return { start: slot, end: Math.min(slot + boxes, nextBoundary(slot, occupied)) }
 }

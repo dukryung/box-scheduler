@@ -10,6 +10,9 @@ export interface Block {
   source: 'manual' | 'ai'
 }
 
+// 'carried' = copied forward to a later day (the copy is a new open item there).
+export type BrainDumpStatus = 'open' | 'scheduled' | 'done' | 'dropped' | 'carried'
+
 export interface BrainDumpItem {
   id: string
   date: string
@@ -17,7 +20,7 @@ export interface BrainDumpItem {
   estimateBoxes: number | null
   priority: number | null
   category: string | null
-  status: 'open' | 'scheduled' | 'done' | 'dropped'
+  status: BrainDumpStatus
   carriedFrom: string | null
 }
 

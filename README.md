@@ -39,6 +39,7 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | GET | `/api/health` | 헬스 체크 |
 | GET | `/api/days/{date}` | 하루치 블록 + Brain Dump + 메모 |
 | PUT | `/api/days/{date}/note` | 하루 메모 저장 `{note}` |
+| POST | `/api/days/{date}/carry-over` | 그날의 미완료(open) Brain Dump 항목을 `{to}` 날짜로 복사, 원본은 `carried` 처리 |
 | GET | `/api/calendar?month=YYYY-MM` | 월간 요약 (날짜별 상위 3개 블록, 개수, 계획/완료 박스) |
 | POST | `/api/blocks` | 블록 생성 `{date, startSlot, endSlot, title, color?, brainDumpId?}` |
 | PATCH | `/api/blocks/{id}` | 블록 수정 (이동/리사이즈/완료) |

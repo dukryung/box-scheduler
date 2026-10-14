@@ -61,3 +61,26 @@ func (a *API) deleteBrainDump(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (a *API) carryOver(w http.ResponseWriter, r *http.Request) {
+	from := chi.URLParam(r, "date")
+	var body struct {
+		To string `json:"to"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	fromDate, ok := parseDate(from)
+	toDate, ok2 := parseDate(body.To)
+	if !ok || !ok2 || !toDate.After(fromDate) {
+		writeError(w, http.StatusBadRequest, "to must be a YYYY-MM-DD date after the source date")
+		return
+	}
+
+	items, err := a.store.CarryOver(r.Context(), userID(r), from, body.To)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}

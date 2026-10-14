@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatRange, isFree, rowSegments, selectionRange, slotToTime } from './slots'
+import { fitRange, formatRange, isFree, rowSegments, selectionRange, slotToTime } from './slots'
 
 describe('slotToTime', () => {
   it('maps slot indexes to clock times', () => {
@@ -51,5 +51,22 @@ describe('isFree', () => {
     expect(isFree({ start: 62, end: 63 }, occupied)).toBe(true)
     expect(isFree({ start: 61, end: 63 }, occupied)).toBe(false)
     expect(isFree({ start: 143, end: 145 }, occupied)).toBe(false)
+  })
+})
+
+describe('fitRange', () => {
+  const occupied = [{ start: 62, end: 64 }]
+
+  it('uses the full length when there is room', () => {
+    expect(fitRange(50, 3, occupied)).toEqual({ start: 50, end: 53 })
+  })
+
+  it('is cut short by the next block and the end of the day', () => {
+    expect(fitRange(60, 4, occupied)).toEqual({ start: 60, end: 62 })
+    expect(fitRange(142, 4, [])).toEqual({ start: 142, end: 144 })
+  })
+
+  it('rejects a drop onto an occupied slot', () => {
+    expect(fitRange(63, 2, occupied)).toBeNull()
   })
 })

@@ -1,4 +1,4 @@
-import type { Block, Day } from './types'
+import type { Block, BrainDumpItem, Day } from './types'
 
 export const OVERLAP_MESSAGE = '다른 블록과 시간이 겹쳐요'
 
@@ -20,6 +20,10 @@ export type NewBlock = Pick<Block, 'date' | 'startSlot' | 'endSlot' | 'title'> &
 
 export type BlockPatch = Partial<Pick<Block, 'date' | 'startSlot' | 'endSlot' | 'title' | 'color' | 'done'>>
 
+export type NewBrainDumpItem = Pick<BrainDumpItem, 'date' | 'title'> & Partial<Pick<BrainDumpItem, 'estimateBoxes'>>
+
+export type BrainDumpPatch = Partial<Pick<BrainDumpItem, 'title' | 'estimateBoxes' | 'status'>>
+
 export const api = {
   getDay: (date: string) => request<Day>(`/days/${date}`),
 
@@ -27,4 +31,12 @@ export const api = {
   updateBlock: (id: string, p: BlockPatch) =>
     request<Block>(`/blocks/${id}`, { method: 'PATCH', body: JSON.stringify(p) }),
   deleteBlock: (id: string) => request<void>(`/blocks/${id}`, { method: 'DELETE' }),
+
+  createBrainDump: (it: NewBrainDumpItem) =>
+    request<BrainDumpItem>('/brain-dump', { method: 'POST', body: JSON.stringify(it) }),
+  updateBrainDump: (id: string, p: BrainDumpPatch) =>
+    request<BrainDumpItem>(`/brain-dump/${id}`, { method: 'PATCH', body: JSON.stringify(p) }),
+  deleteBrainDump: (id: string) => request<void>(`/brain-dump/${id}`, { method: 'DELETE' }),
+  carryOver: (from: string, to: string) =>
+    request<BrainDumpItem[]>(`/days/${from}/carry-over`, { method: 'POST', body: JSON.stringify({ to }) }),
 }

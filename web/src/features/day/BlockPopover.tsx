@@ -52,6 +52,8 @@ export function BlockPopover(props: Props) {
       {/* Clicking outside saves (edit) or discards an empty draft (create). */}
       <div className="fixed inset-0 z-40" onPointerDown={submit} />
       <form
+        role="dialog"
+        aria-label={props.mode === 'create' ? '블록 추가' : '블록 편집'}
         className="fixed z-50 flex flex-col gap-3 rounded-xl border border-zinc-200 bg-white p-4 shadow-xl dark:border-zinc-700 dark:bg-zinc-900"
         style={{ left, top, width: WIDTH }}
         onSubmit={(e) => {
