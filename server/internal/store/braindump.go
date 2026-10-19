@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 )
 
 type BrainDumpItem struct {
@@ -73,21 +75,13 @@ func (s *Store) CreateBrainDump(ctx context.Context, userID string, it BrainDump
 	return created, mapErr(err)
 }
 
-func (s *Store) UpdateBrainDump(ctx context.Context, userID, id string, p BrainDumpPatch) (BrainDumpItem, error) {
-	row := s.pool.QueryRow(ctx, `
-		UPDATE brain_dump_items SET
-			title          = COALESCE($3::text, title),
-			estimate_boxes = COALESCE($4::smallint, estimate_boxes),
-			priority       = COALESCE($5::smallint, priority),
-			category       = COALESCE($6::text, category),
-			status         = COALESCE($7::text, status),
-			due_date       = CASE WHEN $8::text IS NULL THEN due_date WHEN $8 = '' THEN NULL ELSE $8::date END,
-			note           = CASE WHEN $9::text IS NULL THEN note WHEN $9 = '' THEN NULL ELSE $9 END
-		WHERE user_id = $1 AND id = $2
-		RETURNING `+brainDumpCols,
-		userID, id, p.Title, p.EstimateBoxes, p.Priority, p.Category, p.Status, p.DueDate, p.Note)
-	updated, err := scanBrainDump(row)
-	return updated, mapErr(err)
+// UpdateBrainDump changes an item and keeps its blocks in step (see sync.go).
+func (s *Store) UpdateBrainDump(ctx context.Context, userID, id string, p BrainDumpPatch) (updated BrainDumpItem, err error) {
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		_, updated, err = updateItem(ctx, tx, userID, id, p)
+		return err
+	})
+	return updated, err
 }
 
 func (s *Store) DeleteBrainDump(ctx context.Context, userID, id string) error {
@@ -228,4 +222,28 @@ func (s *Store) BacklogDueDates(ctx context.Context, userID, from, to string) (m
 		dues[date] = append(dues[date], title)
 	}
 	return dues, mapErr(rows.Err())
+}
+
+// ListLinkedItems returns items from other days or the backlog that have a block
+// on date, so the day's brain dump can show everything on its timetable.
+func (s *Store) ListLinkedItems(ctx context.Context, userID, date string) ([]BrainDumpItem, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+prefixed("i.", brainDumpCols)+` FROM brain_dump_items i
+		WHERE i.user_id = $1 AND i.date IS DISTINCT FROM $2::date
+		  AND EXISTS (SELECT 1 FROM time_blocks b WHERE b.brain_dump_id = i.id AND b.date = $2::date)
+		ORDER BY i.created_at`, userID, date)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+
+	items := []BrainDumpItem{}
+	for rows.Next() {
+		it, err := scanBrainDump(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, it)
+	}
+	return items, mapErr(rows.Err())
 }

@@ -59,6 +59,8 @@ interface Props {
   dropBoxes: number | null
   onItemDrop: (range: SlotRange) => void
   ghosts: GhostBlock[]
+  /** Scroll to this block and flash it; `n` changes on every request. */
+  focus: { id: string; n: number } | null
 }
 
 const toRange = (b: Block): SlotRange => ({ start: b.startSlot, end: b.endSlot })
@@ -74,6 +76,7 @@ export function TimeGrid({
   dropBoxes,
   onItemDrop,
   ghosts,
+  focus,
 }: Props) {
   const cellsRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -88,6 +91,20 @@ export function TimeGrid({
     // Only on mount / day change, not every time "now" ticks.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nowSlot === null])
+
+  const [flashId, setFlashId] = useState<string | null>(null)
+  useEffect(() => {
+    if (!focus) return
+    const block = blocks.find((b) => b.id === focus.id)
+    if (!block) return
+    const row = Math.floor(block.startSlot / SLOTS_PER_HOUR)
+    scrollRef.current?.scrollTo({ top: Math.max(0, row - 1) * rowHeight, behavior: 'smooth' })
+    setFlashId(focus.id)
+    const t = setTimeout(() => setFlashId(null), 1600)
+    return () => clearTimeout(t)
+    // Only when a new focus request comes in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus])
 
   // When AI suggestions appear, bring the earliest one into view (on phones it may
   // otherwise sit behind the suggestion sheet).
@@ -328,6 +345,7 @@ export function TimeGrid({
                       last ? 'mr-[3px] rounded-r-lg' : '',
                       isTempId(block.id) ? 'animate-pulse' : 'cursor-grab active:cursor-grabbing',
                       isDragged ? 'z-20 shadow-lg ring-2 ring-accent' : '',
+                      block.id === flashId ? 'z-20 animate-pulse ring-2 ring-accent ring-offset-1' : '',
                       isDragged && dropInvalid ? 'opacity-50 ring-danger' : '',
                     ].join(' ')}
                   >

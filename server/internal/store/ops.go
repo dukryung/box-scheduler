@@ -46,46 +46,31 @@ func (s *Store) ApplyEdits(ctx context.Context, userID string, edits []Edit) ([]
 func applyEdit(ctx context.Context, tx pgx.Tx, userID string, e Edit) (Edit, error) {
 	switch e.Kind {
 	case "create_block":
-		source := e.Source
-		if source == "" {
-			source = "manual"
-		}
-		done := e.Done != nil && *e.Done
-		var id string
-		err := tx.QueryRow(ctx, `
-			INSERT INTO time_blocks (user_id, date, start_slot, end_slot, title, color, brain_dump_id, done, source)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id::text`,
-			userID, e.Date, e.StartSlot, e.EndSlot, e.Title, e.Color, e.BrainDumpID, done, source).Scan(&id)
-		return Edit{Kind: "delete_block", BlockID: id}, err
+		created, err := insertBlock(ctx, tx, userID, Block{
+			Date: e.Date, StartSlot: deref(e.StartSlot), EndSlot: deref(e.EndSlot), Title: deref(e.Title),
+			Color: e.Color, BrainDumpID: e.BrainDumpID, Done: e.Done != nil && *e.Done, Source: e.Source,
+		})
+		return Edit{Kind: "delete_block", BlockID: created.ID}, err
 
 	case "update_block":
-		before, err := scanBlock(tx.QueryRow(ctx, `SELECT `+blockCols+` FROM time_blocks WHERE user_id = $1 AND id = $2 FOR UPDATE`, userID, e.BlockID))
-		if err != nil {
-			return Edit{}, err
-		}
 		var date *string
 		if e.Date != "" {
 			date = &e.Date
 		}
-		tag, err := tx.Exec(ctx, `
-			UPDATE time_blocks SET
-				date       = COALESCE($3::date, date),
-				start_slot = COALESCE($4::smallint, start_slot),
-				end_slot   = COALESCE($5::smallint, end_slot),
-				title      = COALESCE($6::text, title),
-				done       = COALESCE($7::boolean, done)
-			WHERE user_id = $1 AND id = $2`,
-			userID, e.BlockID, date, e.StartSlot, e.EndSlot, e.Title, e.Done)
-		if err == nil && tag.RowsAffected() == 0 {
-			err = ErrNotFound
-		}
+		before, _, err := updateBlock(ctx, tx, userID, e.BlockID, BlockPatch{
+			Date: date, StartSlot: e.StartSlot, EndSlot: e.EndSlot, Title: e.Title, Done: e.Done,
+		})
 		return Edit{Kind: "update_block", BlockID: before.ID, Date: before.Date, StartSlot: &before.StartSlot,
 			EndSlot: &before.EndSlot, Title: &before.Title, Done: &before.Done}, err
 
 	case "delete_block":
-		before, err := scanBlock(tx.QueryRow(ctx, `DELETE FROM time_blocks WHERE user_id = $1 AND id = $2 RETURNING `+blockCols, userID, e.BlockID))
-		return Edit{Kind: "create_block", Date: before.Date, StartSlot: &before.StartSlot, EndSlot: &before.EndSlot, Title: &before.Title,
-			Done: &before.Done, Color: before.Color, BrainDumpID: before.BrainDumpID, Source: before.Source}, err
+		before, itemDeleted, err := deleteBlock(ctx, tx, userID, e.BlockID)
+		inverse := Edit{Kind: "create_block", Date: before.Date, StartSlot: &before.StartSlot, EndSlot: &before.EndSlot, Title: &before.Title,
+			Done: &before.Done, Color: before.Color, BrainDumpID: before.BrainDumpID, Source: before.Source}
+		if itemDeleted {
+			inverse.BrainDumpID = nil // undo recreates the item along with the block
+		}
+		return inverse, err
 
 	case "add_item":
 		status := "open"
@@ -104,17 +89,7 @@ func applyEdit(ctx context.Context, tx pgx.Tx, userID string, e Edit) (Edit, err
 		return Edit{Kind: "delete_item", ItemID: id}, err
 
 	case "update_item":
-		before, err := scanBrainDump(tx.QueryRow(ctx, `SELECT `+brainDumpCols+` FROM brain_dump_items WHERE user_id = $1 AND id = $2 FOR UPDATE`, userID, e.ItemID))
-		if err != nil {
-			return Edit{}, err
-		}
-		_, err = tx.Exec(ctx, `
-			UPDATE brain_dump_items SET
-				title          = COALESCE($3::text, title),
-				estimate_boxes = COALESCE($4::smallint, estimate_boxes),
-				status         = COALESCE($5::text, status)
-			WHERE user_id = $1 AND id = $2`,
-			userID, e.ItemID, e.Title, e.EstimateBoxes, e.Status)
+		before, _, err := updateItem(ctx, tx, userID, e.ItemID, BrainDumpPatch{Title: e.Title, EstimateBoxes: e.EstimateBoxes, Status: e.Status})
 		return Edit{Kind: "update_item", ItemID: before.ID, Title: &before.Title, EstimateBoxes: before.EstimateBoxes, Status: &before.Status}, err
 
 	case "delete_item":
@@ -150,4 +125,12 @@ func (s *Store) ListBrainDumpRange(ctx context.Context, userID, from, to string)
 		items = append(items, it)
 	}
 	return items, mapErr(rows.Err())
+}
+
+func deref[T any](p *T) T {
+	var zero T
+	if p == nil {
+		return zero
+	}
+	return *p
 }

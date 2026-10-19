@@ -1,13 +1,11 @@
 import { useState, type Ref } from 'react'
-import type { BrainDumpItem } from '../../api/types'
 import { Archive, ArrowRight, CalendarPlus, Close, Grip, Plus } from '../../components/icons'
 import { doneStrike, secondaryButton, srOnly } from '../../components/styles'
+import { groupBrainDump, type Row } from '../../lib/brainDumpGroups'
 import { addDays, parseISODate, todayISO } from '../../lib/date'
-import { formatDuration } from '../../lib/slots'
+import { formatDuration, slotToTime } from '../../lib/slots'
 import { isTempId, useDayStore } from '../../store/dayStore'
-import { dropBoxes, scheduledBoxes, type DraggedItem } from './drop'
-
-const STATUS_ORDER: Record<BrainDumpItem['status'], number> = { open: 0, scheduled: 0, done: 1, carried: 2, dropped: 2 }
+import { dropBoxes, type DraggedItem } from './drop'
 
 function shortDate(iso: string) {
   const d = parseISODate(iso)
@@ -19,21 +17,25 @@ interface Props {
   onNavigate: (date: string) => void
   /** Phone flow: open the "시간표에 넣기" sheet instead of dragging. */
   onPlace: (dragged: DraggedItem) => void
+  /** A time chip was pressed: show that block on the timetable. */
+  onFocusBlock: (blockId: string) => void
   inputRef?: Ref<HTMLInputElement>
 }
 
-export function BrainDumpPanel({ onDragItem, onNavigate, onPlace, inputRef }: Props) {
-  const { date, blocks, brainDump, addBrainDump, updateBrainDump, deleteBrainDump, carryOver } = useDayStore()
+export function BrainDumpPanel({ onDragItem, onNavigate, onPlace, onFocusBlock, inputRef }: Props) {
+  const { date, blocks, brainDump, linkedItems, addBrainDump, carryOver } = useDayStore()
   const [text, setText] = useState('')
   const [carried, setCarried] = useState<{ count: number; to: string } | null>(null)
 
-  const items = [...brainDump].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status])
+  const groups = groupBrainDump(brainDump, linkedItems, blocks)
   const openCount = brainDump.filter((it) => it.status === 'open').length
   const carryTarget = date < todayISO() ? todayISO() : addDays(date, 1)
+  const empty = brainDump.length === 0 && linkedItems.length === 0
+  const rowProps = { onDragItem, onPlace, onFocusBlock }
 
   return (
     <section className="flex h-full flex-col gap-4">
-      <p className="hidden text-[13px] text-muted md:block">머릿속의 할 일을 모두 적고, 시간표로 끌어다 놓으세요.</p>
+      <p className="hidden text-[13px] text-muted md:block">머릿속의 할 일을 모두 적어 두세요. 시간표에서 만든 일정도 여기에 함께 보여요.</p>
 
       <div className="flex flex-col gap-1.5">
         <form
@@ -67,26 +69,19 @@ export function BrainDumpPanel({ onDragItem, onNavigate, onPlace, inputRef }: Pr
         <p className="text-xs text-muted">끝에 ‘40분’, ‘1시간’을 붙이면 예상 시간이 돼요.</p>
       </div>
 
-      <ul className="-mx-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1">
-        {items.length === 0 && (
-          <li className="px-1 py-8 text-center text-sm leading-relaxed text-muted">
+      <div className="-mx-1 flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-1">
+        {empty && (
+          <p className="px-1 py-8 text-center text-sm leading-relaxed text-muted">
             머릿속에 있는 일을 모두 적어보세요.
             <br />
             적은 항목은 시간표에 넣을 수 있어요.
-          </li>
+          </p>
         )}
-        {items.map((item) => (
-          <BrainDumpRow
-            key={item.id}
-            item={item}
-            scheduled={scheduledBoxes(item.id, blocks)}
-            onDragItem={onDragItem}
-            onPlace={onPlace}
-            onUpdate={(patch) => void updateBrainDump(item.id, patch)}
-            onDelete={() => void deleteBrainDump(item.id)}
-          />
-        ))}
-      </ul>
+        <Group label="아직 시간표에 없음" rows={groups.unscheduled} {...rowProps} />
+        <Group label="시간표에 있음" rows={groups.scheduled} {...rowProps} />
+        <Group label="완료" rows={groups.done} {...rowProps} />
+        <Group label="넘김" rows={groups.closed} {...rowProps} />
+      </div>
 
       {carried && (
         <p className="text-xs text-muted">
@@ -112,27 +107,56 @@ export function BrainDumpPanel({ onDragItem, onNavigate, onPlace, inputRef }: Pr
   )
 }
 
-interface RowProps {
-  item: BrainDumpItem
-  scheduled: number
+interface GroupProps {
+  label: string
+  rows: Row[]
   onDragItem: (dragged: DraggedItem | null) => void
   onPlace: (dragged: DraggedItem) => void
-  onUpdate: (patch: { title?: string; estimateBoxes?: number; status?: BrainDumpItem['status'] }) => void
-  onDelete: () => void
+  onFocusBlock: (blockId: string) => void
 }
 
-function BrainDumpRow({ item, scheduled, onDragItem, onPlace, onUpdate, onDelete }: RowProps) {
+function Group({ label, rows, ...rowProps }: GroupProps) {
+  if (rows.length === 0) return null
+  return (
+    <section aria-label={label} className="flex flex-col gap-2">
+      <h3 className="px-1 text-xs font-semibold text-muted">
+        {label} <span className="font-normal">{rows.length}</span>
+      </h3>
+      <ul className="flex flex-col gap-2">
+        {rows.map((row) => (
+          <BrainDumpRow key={row.item.id} row={row} {...rowProps} />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+interface RowProps {
+  row: Row
+  onDragItem: (dragged: DraggedItem | null) => void
+  onPlace: (dragged: DraggedItem) => void
+  onFocusBlock: (blockId: string) => void
+}
+
+function BrainDumpRow({ row, onDragItem, onPlace, onFocusBlock }: RowProps) {
+  const { updateBrainDump, deleteBrainDump, moveToBacklog } = useDayStore()
+  const { item, sessions, linked } = row
   const [editing, setEditing] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const pending = isTempId(item.id)
   const open = item.status === 'open'
-  const draggable = open && !pending && !editing
+  const unscheduled = open && sessions.length === 0
+  // Linked rows belong to the backlog or another day; schedule or edit them there.
+  const draggable = open && !pending && !editing && !linked
   const estimate = item.estimateBoxes
+  const scheduled = sessions.reduce((n, b) => n + b.endSlot - b.startSlot, 0)
   const stepper = 'flex h-7 w-7 items-center justify-center rounded-md text-ink-2 hover:bg-subtle disabled:opacity-30'
+  const update = (patch: Parameters<typeof updateBrainDump>[1]) => void updateBrainDump(item.id, patch)
 
   function commitTitle(value: string) {
     setEditing(false)
     const t = value.trim()
-    if (t && t !== item.title) onUpdate({ title: t })
+    if (t && t !== item.title) update({ title: t })
   }
 
   return (
@@ -145,105 +169,135 @@ function BrainDumpRow({ item, scheduled, onDragItem, onPlace, onUpdate, onDelete
       }}
       onDragEnd={() => onDragItem(null)}
       className={[
-        'group flex items-start gap-2.5 rounded-xl border border-grid p-3',
-        item.status === 'done' ? 'bg-ground/60' : 'bg-surface',
+        'group flex flex-col gap-2 rounded-xl border p-3',
+        unscheduled ? 'border-dashed border-line-strong bg-surface' : 'border-grid bg-surface',
+        item.status === 'done' ? 'bg-ground/60' : '',
         draggable ? 'md:cursor-grab md:active:cursor-grabbing md:hover:border-line-strong' : '',
         pending ? 'opacity-60' : '',
         item.status === 'carried' || item.status === 'dropped' ? 'opacity-55' : '',
       ].join(' ')}
     >
-      <Grip className={`mt-0.5 hidden shrink-0 text-faint md:block ${draggable ? '' : 'invisible'}`} />
-      <input
-        type="checkbox"
-        className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--app-accent)] md:h-[18px] md:w-[18px]"
-        aria-label={`${item.title} 완료`}
-        checked={item.status === 'done'}
-        disabled={pending || item.status === 'carried'}
-        onChange={(e) => onUpdate({ status: e.target.checked ? 'done' : 'open' })}
-      />
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        {editing ? (
-          <input
-            autoFocus
-            defaultValue={item.title}
-            onBlur={(e) => commitTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commitTitle(e.currentTarget.value)
-              if (e.key === 'Escape') setEditing(false)
-            }}
-            className="w-full rounded-md border border-accent bg-transparent px-1.5 text-[15px] outline-none md:text-sm"
-          />
-        ) : (
-          <div
-            onDoubleClick={() => open && !pending && setEditing(true)}
-            className={`text-[15px] leading-snug font-medium break-words md:text-sm ${item.status === 'done' ? `text-faint ${doneStrike}` : ''}`}
-          >
-            {item.title}
+      <div className="flex items-start gap-2.5">
+        <Grip className={`mt-0.5 hidden shrink-0 text-faint md:block ${draggable ? '' : 'invisible'}`} />
+        <input
+          type="checkbox"
+          className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--app-accent)] md:h-[18px] md:w-[18px]"
+          aria-label={`${item.title} 완료`}
+          checked={item.status === 'done'}
+          disabled={pending || item.status === 'carried'}
+          onChange={(e) => update({ status: e.target.checked ? 'done' : 'open' })}
+        />
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {editing ? (
+            <input
+              autoFocus
+              defaultValue={item.title}
+              aria-label="할 일 이름"
+              onBlur={(e) => commitTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitTitle(e.currentTarget.value)
+                if (e.key === 'Escape') setEditing(false)
+              }}
+              className="w-full rounded-md border border-accent bg-transparent px-1.5 text-[15px] outline-none md:text-sm"
+            />
+          ) : (
+            <div
+              onDoubleClick={() => open && !pending && !linked && setEditing(true)}
+              className={`text-[15px] leading-snug font-medium break-words md:text-sm ${item.status === 'done' ? `text-faint ${doneStrike}` : ''}`}
+            >
+              {item.title}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-muted">
+            {unscheduled && (
+              <span className="rounded-md border border-line-strong px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">미배정</span>
+            )}
+            {linked && (
+              <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent-ink">
+                {linked === 'backlog' ? '보관함' : `${shortDate(item.date!)} 할 일`}
+              </span>
+            )}
+            {sessions.map((b) => (
+              <button
+                key={b.id}
+                onClick={() => onFocusBlock(b.id)}
+                aria-label={`시간표에서 ${slotToTime(b.startSlot)} 블록 보기`}
+                className={`rounded-md bg-subtle px-1.5 py-0.5 font-mono text-[11px] text-ink-2 hover:bg-line ${b.done ? 'line-through decoration-danger' : ''}`}
+              >
+                {slotToTime(b.startSlot)}–{slotToTime(b.endSlot)}
+              </button>
+            ))}
+            {open && !linked && (
+              <span className="flex items-center rounded-md bg-subtle">
+                <button
+                  aria-label="예상 시간 줄이기"
+                  disabled={pending || !estimate || estimate <= 1}
+                  onClick={() => estimate && update({ estimateBoxes: estimate - 1 })}
+                  className={stepper}
+                >
+                  −
+                </button>
+                <span className="px-0.5 font-mono text-ink-2">{estimate ? formatDuration(estimate) : '시간 미정'}</span>
+                <button
+                  aria-label="예상 시간 늘리기"
+                  disabled={pending || (estimate ?? 0) >= 144}
+                  onClick={() => update({ estimateBoxes: (estimate ?? 0) + 1 })}
+                  className={stepper}
+                >
+                  +
+                </button>
+              </span>
+            )}
+            {open && !linked && scheduled > 0 && estimate && scheduled < estimate && (
+              <span>
+                배정 {formatDuration(scheduled)} / {formatDuration(estimate)}
+              </span>
+            )}
+            {item.carriedFrom && <span>↩ {shortDate(item.carriedFrom)}부터</span>}
+            {item.status === 'carried' && <span>→ 다음 날로 넘김</span>}
           </div>
-        )}
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted">
-          {open && (
-            <span className="flex items-center rounded-md bg-subtle">
-              <button
-                aria-label="예상 시간 줄이기"
-                disabled={pending || !estimate || estimate <= 1}
-                onClick={() => estimate && onUpdate({ estimateBoxes: estimate - 1 })}
-                className={stepper}
-              >
-                −
-              </button>
-              <span className="px-0.5 font-mono text-ink-2">{estimate ? formatDuration(estimate) : '시간 미정'}</span>
-              <button
-                aria-label="예상 시간 늘리기"
-                disabled={pending || (estimate ?? 0) >= 144}
-                onClick={() => onUpdate({ estimateBoxes: (estimate ?? 0) + 1 })}
-                className={stepper}
-              >
-                +
-              </button>
-            </span>
-          )}
-          {scheduled > 0 && (
-            <span className="flex items-center gap-1.5">
-              {estimate ? (
-                <span className="h-1 w-11 rounded-full bg-line">
-                  <span className="block h-1 rounded-full bg-accent" style={{ width: `${Math.min(100, (scheduled / estimate) * 100)}%` }} />
-                </span>
-              ) : null}
-              <span className={estimate && scheduled >= estimate ? 'font-medium text-good' : ''}>배정 {formatDuration(scheduled)}</span>
-            </span>
-          )}
-          {item.carriedFrom && <span>↩ {shortDate(item.carriedFrom)}부터</span>}
-          {item.status === 'carried' && <span>→ 다음 날로 넘김</span>}
         </div>
+        {draggable && unscheduled && (
+          <button
+            onClick={() => onPlace({ item, boxes: dropBoxes(item, scheduled) })}
+            className="flex h-10 shrink-0 items-center gap-1.5 self-center rounded-[10px] border border-line-strong bg-surface px-3 text-[13px] font-semibold md:hidden"
+          >
+            <CalendarPlus size={16} />
+            넣기
+          </button>
+        )}
+        {/* Any open item can wait in the backlog; blocks already placed stay on the timetable. */}
+        {open && !pending && !linked && (
+          <button
+            aria-label={`${item.title} 보관함으로 보내기`}
+            title="나중에 (보관함으로)"
+            onClick={() => void moveToBacklog(item.id)}
+            className="shrink-0 rounded-md p-1 text-muted hover:bg-subtle hover:text-accent"
+          >
+            <Archive size={15} />
+          </button>
+        )}
+        {!pending && !linked && (
+          <button
+            aria-label={`${item.title} 삭제`}
+            onClick={() => (sessions.length > 0 ? setConfirmDelete(true) : void deleteBrainDump(item.id))}
+            className="shrink-0 rounded-md p-1 text-faint hover:text-danger focus:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+          >
+            <Close size={14} />
+          </button>
+        )}
       </div>
-      {draggable && (
-        <button
-          onClick={() => onPlace({ item, boxes: dropBoxes(item, scheduled) })}
-          className="flex h-10 shrink-0 items-center gap-1.5 self-center rounded-[10px] border border-line-strong bg-surface px-3 text-[13px] font-semibold md:hidden"
-        >
-          <CalendarPlus size={16} />
-          넣기
-        </button>
-      )}
-      {draggable && (
-        <button
-          aria-label={`${item.title} 보관함으로 보내기`}
-          title="나중에 (보관함으로)"
-          onClick={() => void useDayStore.getState().moveToBacklog(item.id)}
-          className="shrink-0 rounded-md p-1 text-faint hover:text-accent focus:opacity-100 md:opacity-0 md:group-hover:opacity-100"
-        >
-          <Archive size={15} />
-        </button>
-      )}
-      {!pending && (
-        <button
-          aria-label={`${item.title} 삭제`}
-          onClick={onDelete}
-          className="shrink-0 rounded-md p-1 text-faint hover:text-danger focus:opacity-100 md:opacity-0 md:group-hover:opacity-100"
-        >
-          <Close size={14} />
-        </button>
+
+      {confirmDelete && (
+        <div role="alertdialog" aria-label="삭제 확인" className="flex flex-wrap items-center gap-2 rounded-lg bg-danger/5 px-3 py-2 text-xs text-ink-2">
+          <span className="flex-1">시간표의 블록 {sessions.length}개도 함께 지워져요.</span>
+          <button onClick={() => setConfirmDelete(false)} className="rounded-md px-2 py-1 hover:bg-subtle">
+            취소
+          </button>
+          <button onClick={() => void deleteBrainDump(item.id)} className="rounded-md bg-danger px-2.5 py-1 font-semibold text-white">
+            삭제
+          </button>
+        </div>
       )}
     </li>
   )

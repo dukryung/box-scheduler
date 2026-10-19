@@ -14,8 +14,6 @@ interface TasksState {
   remove: (id: string) => Promise<void>
   /** Moves an item onto a day's Brain Dump; it leaves the backlog. */
   moveToDay: (id: string, date: string) => Promise<boolean>
-  /** After a linked block is checked off: done once the estimate is covered by done time. */
-  syncAfterBlockDone: (itemId: string) => Promise<void>
   setError: (error: string | null) => void
 }
 
@@ -87,15 +85,6 @@ export const useTasksStore = create<TasksState>((set, get) => ({
       set((s) => ({ items: [...s.items, moved], error: (e as Error).message }))
       return false
     }
-  },
-
-  syncAfterBlockDone: async (itemId) => {
-    await get().load()
-    const it = get().items.find((x) => x.id === itemId)
-    if (!it) return
-    const finished = it.scheduledBoxes > 0 && it.doneBoxes === it.scheduledBoxes && (!it.estimateBoxes || it.doneBoxes >= it.estimateBoxes)
-    if (finished && it.status === 'open') await get().update(itemId, { status: 'done' })
-    if (!finished && it.status === 'done' && it.doneBoxes < it.scheduledBoxes) await get().update(itemId, { status: 'open' })
   },
 
   setError: (error) => set({ error }),

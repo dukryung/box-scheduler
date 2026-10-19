@@ -29,6 +29,8 @@ type Props = {
       block: Block
       onSave: (patch: { title?: string; color?: string; done?: boolean }) => void
       onDelete: () => void
+      /** Explains what else a delete removes, e.g. the brain dump item. */
+      deleteHint?: string
     }
 )
 
@@ -136,6 +138,7 @@ export function BlockPopover(props: Props) {
           ))}
         </div>
 
+        {editing && props.mode === 'edit' && props.deleteHint && <p className="-mb-1 text-xs text-muted">{props.deleteHint}</p>}
         {editing && props.mode === 'edit' ? (
           <div className="flex items-center justify-between gap-2">
             <label className="flex items-center gap-2 text-sm">

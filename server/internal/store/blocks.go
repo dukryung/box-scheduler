@@ -1,6 +1,10 @@
 package store
 
-import "context"
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5"
+)
 
 type Block struct {
 	ID          string  `json:"id"`
@@ -52,44 +56,28 @@ func (s *Store) ListBlocks(ctx context.Context, userID, from, to string) ([]Bloc
 	return blocks, mapErr(rows.Err())
 }
 
-func (s *Store) CreateBlock(ctx context.Context, userID string, b Block) (Block, error) {
-	if b.Source == "" {
-		b.Source = "manual"
-	}
-	row := s.pool.QueryRow(ctx, `
-		INSERT INTO time_blocks (user_id, date, start_slot, end_slot, title, color, brain_dump_id, done, source)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING `+blockCols,
-		userID, b.Date, b.StartSlot, b.EndSlot, b.Title, b.Color, b.BrainDumpID, b.Done, b.Source)
-	created, err := scanBlock(row)
-	return created, mapErr(err)
+// CreateBlock adds a block; without BrainDumpID it also creates the item it belongs to.
+func (s *Store) CreateBlock(ctx context.Context, userID string, b Block) (created Block, err error) {
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		created, err = insertBlock(ctx, tx, userID, b)
+		return err
+	})
+	return created, err
 }
 
-func (s *Store) UpdateBlock(ctx context.Context, userID, id string, p BlockPatch) (Block, error) {
-	row := s.pool.QueryRow(ctx, `
-		UPDATE time_blocks SET
-			date       = COALESCE($3::date, date),
-			start_slot = COALESCE($4::smallint, start_slot),
-			end_slot   = COALESCE($5::smallint, end_slot),
-			title      = COALESCE($6::text, title),
-			color      = COALESCE($7::text, color),
-			done       = COALESCE($8::boolean, done)
-		WHERE user_id = $1 AND id = $2
-		RETURNING `+blockCols,
-		userID, id, p.Date, p.StartSlot, p.EndSlot, p.Title, p.Color, p.Done)
-	updated, err := scanBlock(row)
-	return updated, mapErr(err)
+func (s *Store) UpdateBlock(ctx context.Context, userID, id string, p BlockPatch) (updated Block, err error) {
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		_, updated, err = updateBlock(ctx, tx, userID, id, p)
+		return err
+	})
+	return updated, err
 }
 
 func (s *Store) DeleteBlock(ctx context.Context, userID, id string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM time_blocks WHERE user_id = $1 AND id = $2`, userID, id)
-	if err != nil {
-		return mapErr(err)
-	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		_, _, err := deleteBlock(ctx, tx, userID, id)
+		return err
+	})
 }
 
 // RecentDoneBlocks returns completed blocks from the `days` days before `before`,
@@ -127,12 +115,8 @@ func (s *Store) ApplyPlan(ctx context.Context, userID string, blocks []Block, es
 
 	created := make([]Block, 0, len(blocks))
 	for _, b := range blocks {
-		row := tx.QueryRow(ctx, `
-			INSERT INTO time_blocks (user_id, date, start_slot, end_slot, title, color, brain_dump_id, source)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, 'ai')
-			RETURNING `+blockCols,
-			userID, b.Date, b.StartSlot, b.EndSlot, b.Title, b.Color, b.BrainDumpID)
-		c, err := scanBlock(row)
+		b.Source = "ai"
+		c, err := insertBlock(ctx, tx, userID, b)
 		if err != nil {
 			return nil, mapErr(err)
 		}

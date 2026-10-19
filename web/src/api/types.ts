@@ -39,6 +39,8 @@ export interface Day {
   note: string | null
   blocks: Block[]
   brainDump: BrainDumpItem[]
+  /** Backlog or other-day items that have a block on this day. */
+  linkedItems: BrainDumpItem[]
 }
 
 export interface CalendarItem {

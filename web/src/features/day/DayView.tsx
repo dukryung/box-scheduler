@@ -51,6 +51,7 @@ export function DayView({ date }: { date: string }) {
   const [aiOpen, setAiOpen] = useState(false)
   const [mobileTab, setMobileTab] = useState<'grid' | 'braindump' | 'backlog'>('grid')
   const [sideTab, setSideTab] = useState<'braindump' | 'backlog'>('braindump')
+  const [focus, setFocus] = useState<{ id: string; n: number } | null>(null)
   const { items: backlog, load: loadBacklog } = useTasksStore()
   const [notice, setNotice] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -167,7 +168,8 @@ export function DayView({ date }: { date: string }) {
   const editingBlock = popover?.mode === 'edit' ? blocks.find((b) => b.id === popover.id) : undefined
   const plannedBoxes = blocks.reduce((n, b) => n + b.endSlot - b.startSlot, 0)
   const doneBoxes = blocks.reduce((n, b) => n + (b.done ? b.endSlot - b.startSlot : 0), 0)
-  const openItems = brainDump.filter((it) => it.status === 'open').length
+  // Items still without a time today ("미배정"), counted on the Brain Dump tab.
+  const unscheduledItems = brainDump.filter((it) => it.status === 'open' && !blocks.some((b) => b.brainDumpId === it.id)).length
 
   const scheduleItem = async (item: DraggedItem, range: SlotRange) => {
     await createBlock({
@@ -200,7 +202,17 @@ export function DayView({ date }: { date: string }) {
     tab === 'backlog' ? (
       <BacklogPanel date={date} onDragItem={setDragged} onPlace={setPlacing} onMovedToDay={onMovedToDay} />
     ) : (
-      <BrainDumpPanel key={date} inputRef={inputRef} onDragItem={setDragged} onNavigate={go} onPlace={setPlacing} />
+      <BrainDumpPanel
+        key={date}
+        inputRef={inputRef}
+        onDragItem={setDragged}
+        onNavigate={go}
+        onPlace={setPlacing}
+        onFocusBlock={(id) => {
+          if (mobile) setMobileTab('grid')
+          setFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }))
+        }}
+      />
     )
 
   const aiPanel = (
@@ -337,8 +349,10 @@ export function DayView({ date }: { date: string }) {
                 }`}
               >
                 {label}
-                {tab === 'braindump' && openItems > 0 && (
-                  <span className="rounded-full bg-line-strong px-1.5 text-[11px] font-semibold text-ink-2">{openItems}</span>
+                {tab === 'braindump' && unscheduledItems > 0 && (
+                  <span className="rounded-full bg-line-strong px-1.5 text-[11px] font-semibold text-ink-2" aria-label={`미배정 ${unscheduledItems}개`}>
+                    {unscheduledItems}
+                  </span>
                 )}
                 {tab === 'backlog' && openBacklogItems > 0 && (
                   <span className="rounded-full bg-line-strong px-1.5 text-[11px] font-semibold text-ink-2">{openBacklogItems}</span>
@@ -359,7 +373,7 @@ export function DayView({ date }: { date: string }) {
                 <div role="tablist" aria-label="할 일 목록" className="mb-4 flex rounded-[10px] bg-subtle p-[3px]">
                   {(
                     [
-                      ['braindump', 'Brain Dump', openItems],
+                      ['braindump', 'Brain Dump', unscheduledItems],
                       ['backlog', '보관함', openBacklogItems],
                     ] as const
                   ).map(([tab, label, count]) => (
@@ -396,6 +410,7 @@ export function DayView({ date }: { date: string }) {
               onInvalidDrop={() => setError(OVERLAP_MESSAGE)}
               dropBoxes={dragged?.boxes ?? null}
               ghosts={ghosts}
+              focus={focus}
               onItemDrop={(range) => {
                 if (!dragged) return
                 void scheduleItem(dragged, range)
@@ -500,6 +515,13 @@ export function DayView({ date }: { date: string }) {
           onClose={closePopover}
           onSave={(patch) => void updateBlock(editingBlock.id, patch)}
           onDelete={() => void deleteBlock(editingBlock.id)}
+          deleteHint={
+            // A dated item goes with its last block; backlog items stay.
+            brainDump.some((it) => it.id === editingBlock.brainDumpId) &&
+            blocks.filter((b) => b.brainDumpId === editingBlock.brainDumpId).length === 1
+              ? '삭제하면 Brain Dump에서도 지워져요.'
+              : undefined
+          }
         />
       )}
 

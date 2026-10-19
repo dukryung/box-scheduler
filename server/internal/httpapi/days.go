@@ -15,6 +15,8 @@ type dayResponse struct {
 	Note      *string               `json:"note"`
 	Blocks    []store.Block         `json:"blocks"`
 	BrainDump []store.BrainDumpItem `json:"brainDump"`
+	// LinkedItems are backlog or other-day items with a block on this day.
+	LinkedItems []store.BrainDumpItem `json:"linkedItems"`
 }
 
 func (a *API) getDay(w http.ResponseWriter, r *http.Request) {
@@ -41,8 +43,13 @@ func (a *API) getDay(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	linked, err := a.store.ListLinkedItems(r.Context(), uid, date)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, dayResponse{
-		Date: date, Weekday: int(t.Weekday()), Note: note, Blocks: blocks, BrainDump: items,
+		Date: date, Weekday: int(t.Weekday()), Note: note, Blocks: blocks, BrainDump: items, LinkedItems: linked,
 	})
 }
 
