@@ -61,6 +61,8 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		FromSlot int `json:"fromSlot"`
 		ToSlot   int `json:"toSlot"`
+		// Also consider backlog items that are urgent: due within a week, overdue, or high priority.
+		IncludeBacklog bool `json:"includeBacklog"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -87,10 +89,20 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	candidates := openTasks(items, blocks)
+	if body.IncludeBacklog {
+		backlog, err := a.store.ListBacklog(r.Context(), uid)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		candidates = append(candidates, urgentBacklog(backlog, day)...)
+	}
+
 	req := ai.PlanRequest{
 		Date: date, Weekday: koreanWeekdays[day.Weekday()],
 		From: body.FromSlot, To: body.ToSlot,
-		Tasks: openTasks(items, blocks), Blocks: []ai.BlockInput{}, History: []ai.HistoryItem{},
+		Tasks: candidates, Blocks: []ai.BlockInput{}, History: []ai.HistoryItem{},
 	}
 	if len(req.Tasks) == 0 {
 		writeError(w, http.StatusBadRequest, "배치할 Brain Dump 항목이 없어요")
@@ -153,6 +165,33 @@ func openTasks(items []store.BrainDumpItem, blocks []store.Block) []ai.TaskInput
 			ID: it.ID, Title: it.Title, EstimateBoxes: it.EstimateBoxes,
 			ScheduledBoxes: scheduled[it.ID], CarriedFrom: it.CarriedFrom,
 		})
+	}
+	return tasks
+}
+
+// backlogHorizon is how far ahead a backlog deadline counts as urgent for a day's plan.
+const backlogHorizon = 7 * 24 * time.Hour
+
+// urgentBacklog picks open backlog items with work left that are high priority or
+// due within backlogHorizon of day (or already overdue).
+func urgentBacklog(items []store.BacklogItem, day time.Time) []ai.TaskInput {
+	tasks := []ai.TaskInput{}
+	for _, it := range items {
+		if it.Status != "open" || (it.EstimateBoxes != nil && it.ScheduledBoxes >= *it.EstimateBoxes) {
+			continue
+		}
+		urgent := it.Priority != nil && *it.Priority == 1
+		if it.DueDate != nil {
+			if due, ok := parseDate(*it.DueDate); ok && due.Sub(day) <= backlogHorizon {
+				urgent = true
+			}
+		}
+		if urgent {
+			tasks = append(tasks, ai.TaskInput{
+				ID: it.ID, Title: it.Title, EstimateBoxes: it.EstimateBoxes, ScheduledBoxes: it.ScheduledBoxes,
+				DueDate: it.DueDate, Backlog: true,
+			})
+		}
 	}
 	return tasks
 }

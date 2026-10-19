@@ -25,6 +25,7 @@ interface Props {
 
 export function AIPanel({ ai, nowSlot, onClose, onApplied }: Props) {
   const [range, setRange] = useState(() => defaultRange(nowSlot))
+  const [includeBacklog, setIncludeBacklog] = useState(true)
   const { status, suggestion, error } = ai
   const busy = status === 'loading' || status === 'applying'
 
@@ -62,10 +63,20 @@ export function AIPanel({ ai, nowSlot, onClose, onApplied }: Props) {
       <div className="flex items-end gap-2">
         {timeSelect('시작', range.from, (from) => setRange((r) => ({ ...r, from })), (s) => s < range.to)}
         {timeSelect('끝', range.to, (to) => setRange((r) => ({ ...r, to })), (s) => s > range.from)}
-        <button onClick={() => void ai.request(range.from, range.to)} disabled={busy} className={`${suggestion ? aiOutlineButton : aiButton} ml-auto h-10`}>
+        <button onClick={() => void ai.request(range.from, range.to, includeBacklog)} disabled={busy} className={`${suggestion ? aiOutlineButton : aiButton} ml-auto h-10`}>
           {suggestion ? '다시 제안' : '제안 받기'}
         </button>
       </div>
+      <label className="flex items-center gap-2 text-[13px] text-ink-2">
+        <input
+          type="checkbox"
+          checked={includeBacklog}
+          disabled={busy}
+          onChange={(e) => setIncludeBacklog(e.target.checked)}
+          className="h-4 w-4 accent-[var(--app-ai)]"
+        />
+        보관함에서 마감이 가깝거나 중요한 일도 함께 넣기
+      </label>
       {!suggestion && status !== 'loading' && (
         <p className="text-[13px] leading-relaxed text-muted">
           Brain Dump에 남은 일을 Claude가 쪼개고 빈 시간에 배치해요. 적용하기 전까지는 시간표에 저장되지 않아요.

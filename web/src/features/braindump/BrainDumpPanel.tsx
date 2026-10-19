@@ -1,6 +1,6 @@
 import { useState, type Ref } from 'react'
 import type { BrainDumpItem } from '../../api/types'
-import { ArrowRight, CalendarPlus, Close, Grip, Plus } from '../../components/icons'
+import { Archive, ArrowRight, CalendarPlus, Close, Grip, Plus } from '../../components/icons'
 import { doneStrike, secondaryButton, srOnly } from '../../components/styles'
 import { addDays, parseISODate, todayISO } from '../../lib/date'
 import { formatDuration } from '../../lib/slots'
@@ -33,15 +33,7 @@ export function BrainDumpPanel({ onDragItem, onNavigate, onPlace, inputRef }: Pr
 
   return (
     <section className="flex h-full flex-col gap-4">
-      <header className="hidden flex-col gap-1 md:flex">
-        <div className="flex items-center gap-2">
-          <h2 className="text-base font-bold">Brain Dump</h2>
-          <span className="rounded-full bg-subtle px-2 text-xs font-semibold text-ink-2" aria-label={`남은 일 ${openCount}개`}>
-            {openCount}
-          </span>
-        </div>
-        <p className="text-[13px] text-muted">머릿속의 할 일을 모두 적고, 시간표로 끌어다 놓으세요.</p>
-      </header>
+      <p className="hidden text-[13px] text-muted md:block">머릿속의 할 일을 모두 적고, 시간표로 끌어다 놓으세요.</p>
 
       <div className="flex flex-col gap-1.5">
         <form
@@ -232,6 +224,16 @@ function BrainDumpRow({ item, scheduled, onDragItem, onPlace, onUpdate, onDelete
         >
           <CalendarPlus size={16} />
           넣기
+        </button>
+      )}
+      {draggable && (
+        <button
+          aria-label={`${item.title} 보관함으로 보내기`}
+          title="나중에 (보관함으로)"
+          onClick={() => void useDayStore.getState().moveToBacklog(item.id)}
+          className="shrink-0 rounded-md p-1 text-faint hover:text-accent focus:opacity-100 md:opacity-0 md:group-hover:opacity-100"
+        >
+          <Archive size={15} />
         </button>
       )}
       {!pending && (

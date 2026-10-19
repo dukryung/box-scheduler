@@ -92,11 +92,15 @@ func applyEdit(ctx context.Context, tx pgx.Tx, userID string, e Edit) (Edit, err
 		if e.Status != nil {
 			status = *e.Status
 		}
+		var date *string // empty means the backlog
+		if e.Date != "" {
+			date = &e.Date
+		}
 		var id string
 		err := tx.QueryRow(ctx, `
 			INSERT INTO brain_dump_items (user_id, date, title, estimate_boxes, status)
 			VALUES ($1, $2, $3, $4, $5) RETURNING id::text`,
-			userID, e.Date, e.Title, e.EstimateBoxes, status).Scan(&id)
+			userID, date, e.Title, e.EstimateBoxes, status).Scan(&id)
 		return Edit{Kind: "delete_item", ItemID: id}, err
 
 	case "update_item":
@@ -115,7 +119,11 @@ func applyEdit(ctx context.Context, tx pgx.Tx, userID string, e Edit) (Edit, err
 
 	case "delete_item":
 		before, err := scanBrainDump(tx.QueryRow(ctx, `DELETE FROM brain_dump_items WHERE user_id = $1 AND id = $2 RETURNING `+brainDumpCols, userID, e.ItemID))
-		return Edit{Kind: "add_item", Date: before.Date, Title: &before.Title, EstimateBoxes: before.EstimateBoxes, Status: &before.Status}, err
+		date := ""
+		if before.Date != nil {
+			date = *before.Date
+		}
+		return Edit{Kind: "add_item", Date: date, Title: &before.Title, EstimateBoxes: before.EstimateBoxes, Status: &before.Status}, err
 
 	default:
 		return Edit{}, ErrInvalid

@@ -59,6 +59,9 @@ func NewRouter(s *store.Store, planner ai.Provider) http.Handler {
 			r.Patch("/blocks/{id}", a.updateBlock)
 			r.Delete("/blocks/{id}", a.deleteBlock)
 
+			r.Get("/tasks", a.listTasks)
+			r.Post("/tasks", a.createTask)
+			r.Post("/brain-dump/{id}/move", a.moveBrainDump)
 			r.Post("/brain-dump", a.createBrainDump)
 			r.Patch("/brain-dump/{id}", a.updateBrainDump)
 			r.Delete("/brain-dump/{id}", a.deleteBrainDump)

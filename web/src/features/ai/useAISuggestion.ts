@@ -27,14 +27,14 @@ export function useAISuggestion(date: string) {
   // A plan only makes sense for the day it was made for.
   useEffect(() => reset, [date, reset])
 
-  async function request(fromSlot: number, toSlot: number) {
+  async function request(fromSlot: number, toSlot: number, includeBacklog = true) {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
     setStatus('loading')
     setError(null)
     try {
-      const res = await api.aiSuggest(date, fromSlot, toSlot, controller.signal)
+      const res = await api.aiSuggest(date, fromSlot, toSlot, includeBacklog, controller.signal)
       setSuggestion(res)
       setRejected(new Set())
       setStatus('ready')

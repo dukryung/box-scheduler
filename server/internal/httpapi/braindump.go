@@ -16,7 +16,7 @@ func (a *API) createBrainDump(w http.ResponseWriter, r *http.Request) {
 	}
 	it.Title = strings.TrimSpace(it.Title)
 	switch {
-	case !isDate(it.Date):
+	case it.Date == nil || !isDate(*it.Date):
 		writeError(w, http.StatusBadRequest, "date must be YYYY-MM-DD")
 		return
 	case it.Title == "":
@@ -35,6 +35,10 @@ func (a *API) createBrainDump(w http.ResponseWriter, r *http.Request) {
 func (a *API) updateBrainDump(w http.ResponseWriter, r *http.Request) {
 	var p store.BrainDumpPatch
 	if !decodeJSON(w, r, &p) {
+		return
+	}
+	if msg := validateTaskFields(p.DueDate, p.Priority, false); msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	if p.Title != nil {

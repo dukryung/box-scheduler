@@ -15,6 +15,8 @@ You get the tasks from their brain dump, the blocks already on their calendar, a
 - preferredWindow: "morning" for deep work that needs focus, "afternoon" for meetings, admin, and collaborative work, "evening" for light or personal tasks, or "any".
 - reason: one short sentence, in the same language as the task titles, explaining the estimate and the timing.
 
+Some tasks have a dueDate (deadline). Tasks marked backlog come from the person's backlog, not today's list: put them in priority order by deadline, and if the day is too full give them the lowest priority so they are the ones left out.
+
 Use recentCompleted to calibrate estimates for similar work. Do not place tasks on specific slots; a separate scheduler does that. Put any advice about the day as a whole (overload, missing breaks, tasks that will not fit) in notes, in the same language as the task titles, in two sentences at most. Include every task exactly once, using its id as taskId. In reason and notes, talk in hours and minutes, never in boxes or slots.`
 
 // planSchema constrains the model's output to Plan.

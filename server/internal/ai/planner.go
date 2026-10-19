@@ -19,6 +19,9 @@ type TaskInput struct {
 	EstimateBoxes  *int    `json:"estimateBoxes,omitempty"`
 	ScheduledBoxes int     `json:"scheduledBoxes"`
 	CarriedFrom    *string `json:"carriedFrom,omitempty"`
+	DueDate        *string `json:"dueDate,omitempty"`
+	// Backlog marks an item from the backlog: optional for this day unless urgent.
+	Backlog bool `json:"backlog,omitempty"`
 }
 
 type BlockInput struct {

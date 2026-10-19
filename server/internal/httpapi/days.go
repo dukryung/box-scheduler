@@ -115,5 +115,10 @@ func (a *API) getCalendar(w http.ResponseWriter, r *http.Request) {
 			d.DoneBoxes += boxes
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"month": month, "days": days})
+	dues, err := a.store.BacklogDueDates(r.Context(), userID(r), first.Format(dateLayout), last.Format(dateLayout))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"month": month, "days": days, "dues": dues})
 }

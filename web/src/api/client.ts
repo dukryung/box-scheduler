@@ -2,6 +2,7 @@ import type {
   AssistantOp,
   AssistantPreview,
   AssistantTurn,
+  BacklogItem,
   Block,
   BrainDumpItem,
   CalendarMonth,
@@ -31,9 +32,21 @@ export type NewBlock = Pick<Block, 'date' | 'startSlot' | 'endSlot' | 'title'> &
 
 export type BlockPatch = Partial<Pick<Block, 'date' | 'startSlot' | 'endSlot' | 'title' | 'color' | 'done'>>
 
-export type NewBrainDumpItem = Pick<BrainDumpItem, 'date' | 'title'> & Partial<Pick<BrainDumpItem, 'estimateBoxes'>>
+export type NewBrainDumpItem = { date: string; title: string } & Partial<Pick<BrainDumpItem, 'estimateBoxes' | 'dueDate' | 'priority'>>
 
-export type BrainDumpPatch = Partial<Pick<BrainDumpItem, 'title' | 'estimateBoxes' | 'status'>>
+export type BrainDumpPatch = Partial<Pick<BrainDumpItem, 'title' | 'estimateBoxes' | 'status' | 'priority'>> & {
+  /** '' clears the value. */
+  dueDate?: string
+  note?: string
+}
+
+export interface NewTask {
+  title: string
+  estimateBoxes?: number | null
+  dueDate?: string | null
+  priority?: number | null
+  note?: string | null
+}
 
 export const api = {
   getDay: (date: string) => request<Day>(`/days/${date}`),
@@ -50,13 +63,18 @@ export const api = {
   updateBrainDump: (id: string, p: BrainDumpPatch) =>
     request<BrainDumpItem>(`/brain-dump/${id}`, { method: 'PATCH', body: JSON.stringify(p) }),
   deleteBrainDump: (id: string) => request<void>(`/brain-dump/${id}`, { method: 'DELETE' }),
+  listTasks: () => request<{ items: BacklogItem[] }>('/tasks'),
+  createTask: (t: NewTask) => request<BacklogItem>('/tasks', { method: 'POST', body: JSON.stringify(t) }),
+  /** Puts an item on a day, or into the backlog with null. */
+  moveBrainDump: (id: string, date: string | null) =>
+    request<BrainDumpItem>(`/brain-dump/${id}/move`, { method: 'POST', body: JSON.stringify({ date }) }),
   carryOver: (from: string, to: string) =>
     request<BrainDumpItem[]>(`/days/${from}/carry-over`, { method: 'POST', body: JSON.stringify({ to }) }),
 
-  aiSuggest: (date: string, fromSlot: number, toSlot: number, signal?: AbortSignal) =>
+  aiSuggest: (date: string, fromSlot: number, toSlot: number, includeBacklog: boolean, signal?: AbortSignal) =>
     request<Suggestion>(`/days/${date}/ai-suggest`, {
       method: 'POST',
-      body: JSON.stringify({ fromSlot, toSlot }),
+      body: JSON.stringify({ fromSlot, toSlot, includeBacklog }),
       signal,
     }),
   assistantPreview: (

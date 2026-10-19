@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { api } from '../../api/client'
 import type { Block, CalendarDay, CalendarMonth } from '../../api/types'
-import { ChevronLeft, ChevronRight } from '../../components/icons'
+import { ChevronLeft, ChevronRight, Flag } from '../../components/icons'
 import { card, doneStrike, iconButton } from '../../components/styles'
 import { WEEKDAYS, addMonths, formatMonthTitle, monthGrid, monthOf, parseISODate, todayISO } from '../../lib/date'
 import { slotToTime } from '../../lib/slots'
@@ -40,6 +40,7 @@ export function MonthView({ month }: { month: string }) {
 
   // Ignore a response still on screen from the previously viewed month.
   const days = data?.month === month ? data.days : {}
+  const dues = data?.month === month ? (data.dues ?? {}) : {}
   const grid = monthGrid(month)
   const totals = Object.values(days).reduce(
     (t, d) => ({ planned: t.planned + d.plannedBoxes, done: t.done + d.doneBoxes }),
@@ -111,6 +112,7 @@ export function MonthView({ month }: { month: string }) {
                   isToday={iso === today}
                   selected={iso === selectedDay}
                   day={days[iso]}
+                  dues={dues[iso]}
                   onSelect={() => setSelected(iso)}
                 />
               ) : (
@@ -121,13 +123,14 @@ export function MonthView({ month }: { month: string }) {
                   inMonth={monthOf(iso) === month}
                   isToday={iso === today}
                   day={days[iso]}
+                  dues={dues[iso]}
                 />
               ),
             )}
           </div>
         </div>
 
-        {mobile && <Agenda date={selectedDay} />}
+        {mobile && <Agenda date={selectedDay} dues={dues[selectedDay]} />}
       </main>
 
       <BottomTabs view="month" date={isCurrentMonth ? today : `${month}-01`} />
@@ -141,9 +144,20 @@ interface CellProps {
   inMonth: boolean
   isToday: boolean
   day: CalendarDay | undefined
+  /** Backlog items due this day. */
+  dues: string[] | undefined
 }
 
-function DayCell({ iso, lastRow, inMonth, isToday, day }: CellProps) {
+function DueChip({ title }: { title: string }) {
+  return (
+    <li className="flex min-w-0 items-center gap-1 rounded-md bg-danger/10 px-1.5 py-[3px] text-xs font-medium text-danger">
+      <Flag size={11} className="shrink-0" />
+      <span className="truncate">마감 · {title}</span>
+    </li>
+  )
+}
+
+function DayCell({ iso, lastRow, inMonth, isToday, day, dues }: CellProps) {
   const d = parseISODate(iso)
   const more = day ? day.total - day.items.length : 0
   const wd = d.getDay()
@@ -151,7 +165,7 @@ function DayCell({ iso, lastRow, inMonth, isToday, day }: CellProps) {
   return (
     <Link
       to={`/day/${iso}`}
-      aria-label={`${d.getMonth() + 1}월 ${d.getDate()}일${day ? `, 일정 ${day.total}개` : ''}`}
+      aria-label={`${d.getMonth() + 1}월 ${d.getDate()}일${day ? `, 일정 ${day.total}개` : ''}${dues ? `, 마감 ${dues.length}개` : ''}`}
       className={[
         'flex min-w-0 flex-col gap-1.5 px-2.5 pt-2 pb-2.5 hover:bg-ground/70',
         wd === 6 ? '' : 'border-r border-grid',
@@ -168,6 +182,15 @@ function DayCell({ iso, lastRow, inMonth, isToday, day }: CellProps) {
       >
         {d.getDate()}
       </span>
+
+      {dues && (
+        <ul className="flex min-w-0 flex-col gap-[3px]" aria-label="마감">
+          {dues.slice(0, 2).map((t) => (
+            <DueChip key={t} title={t} />
+          ))}
+          {dues.length > 2 && <li className="pl-1.5 text-xs text-danger">마감 +{dues.length - 2}</li>}
+        </ul>
+      )}
 
       {day && (
         <>
@@ -202,17 +225,18 @@ interface MobileCellProps {
   isToday: boolean
   selected: boolean
   day: CalendarDay | undefined
+  dues: string[] | undefined
   onSelect: () => void
 }
 
-function MobileDayCell({ iso, inMonth, isToday, selected, day, onSelect }: MobileCellProps) {
+function MobileDayCell({ iso, inMonth, isToday, selected, day, dues, onSelect }: MobileCellProps) {
   const d = parseISODate(iso)
   const wd = d.getDay()
   return (
     <button
       onClick={onSelect}
       aria-pressed={selected}
-      aria-label={`${d.getMonth() + 1}월 ${d.getDate()}일${day ? `, 일정 ${day.total}개` : ''}`}
+      aria-label={`${d.getMonth() + 1}월 ${d.getDate()}일${day ? `, 일정 ${day.total}개` : ''}${dues ? `, 마감 ${dues.length}개` : ''}`}
       className="flex h-[50px] flex-col items-center gap-1 pt-1"
     >
       <span
@@ -225,6 +249,7 @@ function MobileDayCell({ iso, inMonth, isToday, selected, day, onSelect }: Mobil
         {d.getDate()}
       </span>
       <span className="flex h-[5px] gap-[3px]">
+        {dues && <span className="h-[5px] w-[5px] rounded-[1px] bg-danger" aria-hidden="true" />}
         {day?.items.map((it, i) => (
           <span key={i} className="h-[5px] w-[5px] rounded-full" style={{ backgroundColor: it.color ?? 'var(--app-accent)' }} />
         ))}
@@ -234,7 +259,7 @@ function MobileDayCell({ iso, inMonth, isToday, selected, day, onSelect }: Mobil
 }
 
 /** The selected day's blocks under the phone calendar. */
-function Agenda({ date }: { date: string }) {
+function Agenda({ date, dues }: { date: string; dues: string[] | undefined }) {
   const [state, setState] = useState<{ date: string; blocks: Block[] } | null>(null)
   const d = parseISODate(date)
 
@@ -259,6 +284,13 @@ function Agenda({ date }: { date: string }) {
           <ChevronRight size={14} />
         </Link>
       </div>
+      {dues && (
+        <ul className="flex flex-col gap-1 pb-1" aria-label="이 날 마감">
+          {dues.map((t) => (
+            <DueChip key={t} title={t} />
+          ))}
+        </ul>
+      )}
       <ul className="flex flex-col">
         {blocks?.length === 0 && <li className="border-t border-grid py-4 text-center text-sm text-muted">이 날은 일정이 없어요</li>}
         {blocks?.map((b) => (

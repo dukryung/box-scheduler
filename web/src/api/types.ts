@@ -15,13 +15,22 @@ export type BrainDumpStatus = 'open' | 'scheduled' | 'done' | 'dropped' | 'carri
 
 export interface BrainDumpItem {
   id: string
-  date: string
+  /** null for backlog items ("할 일 보관함"), which stay until done. */
+  date: string | null
   title: string
   estimateBoxes: number | null
   priority: number | null
   category: string | null
   status: BrainDumpStatus
   carriedFrom: string | null
+  dueDate: string | null
+  note: string | null
+}
+
+/** A backlog item with its progress across every day it was scheduled on. */
+export interface BacklogItem extends BrainDumpItem {
+  scheduledBoxes: number
+  doneBoxes: number
 }
 
 export interface Day {
@@ -49,6 +58,8 @@ export interface CalendarDay {
 export interface CalendarMonth {
   month: string
   days: Record<string, CalendarDay>
+  /** Titles of open backlog items due on each date. */
+  dues: Record<string, string[]>
 }
 
 export interface SuggestedBlock {

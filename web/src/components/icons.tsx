@@ -97,6 +97,26 @@ export const TabMonth = (p: IconProps) => (
   </Stroke>
 )
 
+export const TabTasks = (p: IconProps) => (
+  <Stroke {...p}>
+    <path d="M4 13l2.5-8h11L20 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />
+    <path d="M4 13h4.5l1 2h5l1-2H20" />
+  </Stroke>
+)
+
+export const Archive = (p: IconProps) => (
+  <Stroke {...p}>
+    <rect x="3" y="4" width="18" height="5" rx="1.5" />
+    <path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4" />
+  </Stroke>
+)
+
+export const Flag = (p: IconProps) => (
+  <Stroke {...p}>
+    <path d="M5 21V4M5 4h11l-2 4 2 4H5" />
+  </Stroke>
+)
+
 export const TabStats = (p: IconProps) => (
   <Stroke {...p}>
     <path d="M5 20V11M12 20V5M19 20v-7" />

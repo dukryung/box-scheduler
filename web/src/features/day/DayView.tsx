@@ -2,13 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { OVERLAP_MESSAGE, api } from '../../api/client'
 import type { AssistantOp } from '../../api/types'
-import { ChevronLeft, ChevronRight, Mic, Plus, Sparkle } from '../../components/icons'
+import { ChevronLeft, ChevronRight, Flag, Mic, Plus, Sparkle } from '../../components/icons'
 import { card, iconButton } from '../../components/styles'
 import { WEEKDAYS, addDays, parseISODate, todayISO } from '../../lib/date'
 import { SLOT_MINUTES, nextBoundary, slotToTime, type SlotRange } from '../../lib/slots'
 import { hm } from '../../lib/hm'
 import { useIsMobile } from '../../lib/useIsMobile'
 import { useDayStore } from '../../store/dayStore'
+import { useTasksStore } from '../../store/tasksStore'
+import { deadlineCounts } from '../../lib/backlog'
+import { BacklogPanel } from '../tasks/BacklogPanel'
 import { AIPanel } from '../ai/AIPanel'
 import { useAISuggestion } from '../ai/useAISuggestion'
 import { AssistantBar, AssistantPanel } from '../assistant/Assistant'
@@ -46,7 +49,9 @@ export function DayView({ date }: { date: string }) {
   const [dragged, setDragged] = useState<DraggedItem | null>(null)
   const [placing, setPlacing] = useState<DraggedItem | null>(null)
   const [aiOpen, setAiOpen] = useState(false)
-  const [mobileTab, setMobileTab] = useState<'grid' | 'braindump'>('grid')
+  const [mobileTab, setMobileTab] = useState<'grid' | 'braindump' | 'backlog'>('grid')
+  const [sideTab, setSideTab] = useState<'braindump' | 'backlog'>('braindump')
+  const { items: backlog, load: loadBacklog } = useTasksStore()
   const [notice, setNotice] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const assistantInputRef = useRef<HTMLInputElement>(null)
@@ -66,6 +71,10 @@ export function DayView({ date }: { date: string }) {
     resetAssistant()
     void setDate(date)
   }, [date, setDate, resetAssistant])
+
+  useEffect(() => {
+    void loadBacklog()
+  }, [loadBacklog])
 
   useEffect(() => {
     if (!undoable) return
@@ -160,8 +169,8 @@ export function DayView({ date }: { date: string }) {
   const doneBoxes = blocks.reduce((n, b) => n + (b.done ? b.endSlot - b.startSlot : 0), 0)
   const openItems = brainDump.filter((it) => it.status === 'open').length
 
-  const scheduleItem = (item: DraggedItem, range: SlotRange) =>
-    createBlock({
+  const scheduleItem = async (item: DraggedItem, range: SlotRange) => {
+    await createBlock({
       date,
       startSlot: range.start,
       endSlot: range.end,
@@ -169,6 +178,30 @@ export function DayView({ date }: { date: string }) {
       color: DEFAULT_BLOCK_COLOR,
       brainDumpId: item.item.id,
     })
+    // Backlog items show progress across days; refresh it.
+    if (item.item.date === null) void loadBacklog()
+  }
+
+  const openBacklogItems = backlog.filter((it) => it.status === 'open').length
+  const deadlines = deadlineCounts(backlog, todayISO())
+  const showDeadlines = isToday && (deadlines.overdue > 0 || deadlines.soon > 0)
+  const openBacklog = () => {
+    closeAI()
+    setSideTab('backlog')
+    setMobileTab('backlog')
+  }
+  const onMovedToDay = (title: string) => {
+    void reload()
+    setSideTab('braindump')
+    if (mobile) setMobileTab('braindump')
+    setNotice(`‘${title}’을(를) ${isToday ? '오늘' : '이 날'} Brain Dump로 가져왔어요`)
+  }
+  const sidePanel = (tab: 'braindump' | 'backlog') =>
+    tab === 'backlog' ? (
+      <BacklogPanel date={date} onDragItem={setDragged} onPlace={setPlacing} onMovedToDay={onMovedToDay} />
+    ) : (
+      <BrainDumpPanel key={date} inputRef={inputRef} onDragItem={setDragged} onNavigate={go} onPlace={setPlacing} />
+    )
 
   const aiPanel = (
     <AIPanel
@@ -183,7 +216,7 @@ export function DayView({ date }: { date: string }) {
       }}
     />
   )
-  const showAside = !mobile || (mobileTab === 'braindump' && !aiOpen)
+  const showAside = !mobile || (mobileTab !== 'grid' && !aiOpen)
   const showGrid = !mobile || mobileTab === 'grid' || aiOpen
 
   return (
@@ -256,6 +289,21 @@ export function DayView({ date }: { date: string }) {
         </button>
       </TopBar>
 
+      {showDeadlines && (
+        <button
+          onClick={openBacklog}
+          className="mx-4 mt-3 flex items-center gap-2 rounded-xl border border-danger/30 bg-danger/5 px-3.5 py-2 text-left text-[13px] text-ink-2 md:mx-6 md:mt-4"
+        >
+          <Flag size={14} className="shrink-0 text-danger" />
+          <span className="min-w-0 flex-1">
+            {deadlines.overdue > 0 && <span className="font-semibold text-danger">기한 지남 {deadlines.overdue}개</span>}
+            {deadlines.overdue > 0 && deadlines.soon > 0 && ' · '}
+            {deadlines.soon > 0 && <span className="font-semibold">오늘·내일 마감 {deadlines.soon}개</span>}
+          </span>
+          <span className="shrink-0 font-semibold text-accent">보관함 보기</span>
+        </button>
+      )}
+
       {!mobile && (
         <div className="relative px-6 pt-4">
           <div className="max-w-[720px]">
@@ -276,6 +324,7 @@ export function DayView({ date }: { date: string }) {
               [
                 ['grid', '시간표'],
                 ['braindump', 'Brain Dump'],
+                ['backlog', '보관함'],
               ] as const
             ).map(([tab, label]) => (
               <button
@@ -291,6 +340,9 @@ export function DayView({ date }: { date: string }) {
                 {tab === 'braindump' && openItems > 0 && (
                   <span className="rounded-full bg-line-strong px-1.5 text-[11px] font-semibold text-ink-2">{openItems}</span>
                 )}
+                {tab === 'backlog' && openBacklogItems > 0 && (
+                  <span className="rounded-full bg-line-strong px-1.5 text-[11px] font-semibold text-ink-2">{openBacklogItems}</span>
+                )}
               </button>
             ))}
           </div>
@@ -300,8 +352,33 @@ export function DayView({ date }: { date: string }) {
           <aside className={`${card} flex min-h-0 flex-1 flex-col p-4 md:w-[320px] md:flex-none md:shrink-0 md:p-5`}>
             {aiOpen && !mobile ? (
               aiPanel
+            ) : mobile ? (
+              sidePanel(mobileTab === 'backlog' ? 'backlog' : 'braindump')
             ) : (
-              <BrainDumpPanel key={date} inputRef={inputRef} onDragItem={setDragged} onNavigate={go} onPlace={setPlacing} />
+              <>
+                <div role="tablist" aria-label="할 일 목록" className="mb-4 flex rounded-[10px] bg-subtle p-[3px]">
+                  {(
+                    [
+                      ['braindump', 'Brain Dump', openItems],
+                      ['backlog', '보관함', openBacklogItems],
+                    ] as const
+                  ).map(([tab, label, count]) => (
+                    <button
+                      key={tab}
+                      role="tab"
+                      aria-selected={sideTab === tab}
+                      onClick={() => setSideTab(tab)}
+                      className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-sm ${
+                        sideTab === tab ? 'bg-surface font-semibold shadow-[0_1px_2px_rgba(21,23,28,0.08)]' : 'text-muted'
+                      }`}
+                    >
+                      {label}
+                      {count > 0 && <span className="rounded-full bg-line-strong px-1.5 text-[11px] font-semibold text-ink-2">{count}</span>}
+                    </button>
+                  ))}
+                </div>
+                <div className="min-h-0 flex-1">{sidePanel(sideTab)}</div>
+              </>
             )}
           </aside>
         )}

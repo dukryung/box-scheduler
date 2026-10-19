@@ -173,7 +173,7 @@ func contextDays(from, to time.Time, blocks []store.Block, items []store.BrainDu
 			}
 		}
 		for _, it := range items {
-			if it.Date == date {
+			if it.Date != nil && *it.Date == date {
 				est := 0
 				if it.EstimateBoxes != nil {
 					est = *it.EstimateBoxes * 10

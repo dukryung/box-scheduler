@@ -3,6 +3,7 @@ import { api, type BlockPatch, type BrainDumpPatch, type NewBlock } from '../api
 import type { Block, BrainDumpItem } from '../api/types'
 import { todayISO } from '../lib/date'
 import { parseQuickAdd } from '../lib/quickAdd'
+import { useTasksStore } from './tasksStore'
 
 const TEMP_PREFIX = 'tmp-'
 
@@ -25,6 +26,8 @@ interface DayState {
   addBrainDump: (text: string) => Promise<void>
   updateBrainDump: (id: string, patch: BrainDumpPatch) => Promise<void>
   deleteBrainDump: (id: string) => Promise<void>
+  /** Sends a Brain Dump item to the backlog ("나중에"). */
+  moveToBacklog: (id: string) => Promise<void>
   /** Copies this day's open items to `to`; returns how many moved. */
   carryOver: (to: string) => Promise<number>
   setError: (error: string | null) => void
@@ -93,7 +96,7 @@ export const useDayStore = create<DayState>((set, get) => ({
   },
 
   addBrainDump: async (text) => {
-    const { title, estimateBoxes } = parseQuickAdd(text)
+    const { title, estimateBoxes, dueDate, priority } = parseQuickAdd(text)
     if (!title) return
     const date = get().date
     const id = tempId()
@@ -102,14 +105,16 @@ export const useDayStore = create<DayState>((set, get) => ({
       date,
       title,
       estimateBoxes,
-      priority: null,
+      priority,
       category: null,
       status: 'open',
       carriedFrom: null,
+      dueDate,
+      note: null,
     }
     set((s) => ({ brainDump: [...s.brainDump, optimistic] }))
     try {
-      const created = await api.createBrainDump({ date, title, estimateBoxes })
+      const created = await api.createBrainDump({ date, title, estimateBoxes, dueDate, priority })
       set((s) => ({ brainDump: replaceById(s.brainDump, id, created) }))
     } catch (e) {
       set((s) => ({ brainDump: s.brainDump.filter((it) => it.id !== id), error: (e as Error).message }))
@@ -141,6 +146,18 @@ export const useDayStore = create<DayState>((set, get) => ({
     }
   },
 
+  moveToBacklog: async (id) => {
+    const moved = get().brainDump.find((it) => it.id === id)
+    if (!moved) return
+    set((s) => ({ brainDump: s.brainDump.filter((it) => it.id !== id) }))
+    try {
+      await api.moveBrainDump(id, null)
+      void useTasksStore.getState().load()
+    } catch (e) {
+      set((s) => ({ brainDump: [...s.brainDump, moved], error: (e as Error).message }))
+    }
+  },
+
   carryOver: async (to) => {
     try {
       const moved = await api.carryOver(get().date, to)
@@ -164,7 +181,8 @@ export const useDayStore = create<DayState>((set, get) => ({
 function syncItemDone(itemId: string) {
   const { blocks, brainDump, updateBrainDump } = useDayStore.getState()
   const item = brainDump.find((it) => it.id === itemId)
-  if (!item) return
+  // Not on this day's list: it is a backlog item, which tracks progress across days.
+  if (!item) return void useTasksStore.getState().syncAfterBlockDone(itemId)
   const allDone = blocks.filter((b) => b.brainDumpId === itemId).every((b) => b.done)
   if (allDone && item.status === 'open') void updateBrainDump(itemId, { status: 'done' })
   if (!allDone && item.status === 'done') void updateBrainDump(itemId, { status: 'open' })

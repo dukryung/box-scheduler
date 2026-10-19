@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
-import { Logo, TabDay, TabMonth, TabStats } from '../../components/icons'
+import { Logo, TabDay, TabMonth, TabStats, TabTasks } from '../../components/icons'
 import { monthOf } from '../../lib/date'
 
-export type View = 'day' | 'month' | 'stats'
+export type View = 'day' | 'month' | 'tasks' | 'stats'
 
 interface Props {
   view: View
@@ -15,6 +15,7 @@ const targets = (date: string) =>
   [
     { view: 'day', label: '일', to: `/day/${date}`, Icon: TabDay },
     { view: 'month', label: '월', to: `/month/${monthOf(date)}`, Icon: TabMonth },
+    { view: 'tasks', label: '보관함', to: '/tasks', Icon: TabTasks },
     { view: 'stats', label: '통계', to: '/stats', Icon: TabStats },
   ] as const
 
@@ -43,7 +44,7 @@ export function BottomTabs({ view, date }: Props) {
   return (
     <nav
       aria-label="화면 전환"
-      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-3 border-t border-line bg-surface pb-[max(env(safe-area-inset-bottom),8px)] md:hidden"
+      className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-line bg-surface pb-[max(env(safe-area-inset-bottom),8px)] md:hidden"
     >
       {targets(date).map(({ view: v, label, to, Icon }) => (
         <Link

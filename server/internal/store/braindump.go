@@ -1,31 +1,41 @@
 package store
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 type BrainDumpItem struct {
-	ID            string  `json:"id"`
-	Date          string  `json:"date"`
+	ID string `json:"id"`
+	// Date is nil for backlog items ("할 일 보관함"), which stay until done.
+	Date          *string `json:"date"`
 	Title         string  `json:"title"`
 	EstimateBoxes *int    `json:"estimateBoxes"`
 	Priority      *int    `json:"priority"`
 	Category      *string `json:"category"`
 	Status        string  `json:"status"`
 	CarriedFrom   *string `json:"carriedFrom"`
+	DueDate       *string `json:"dueDate"`
+	Note          *string `json:"note"`
 }
 
+// BrainDumpPatch changes only the fields that are set. For DueDate and Note an
+// empty string clears the value.
 type BrainDumpPatch struct {
 	Title         *string `json:"title"`
 	EstimateBoxes *int    `json:"estimateBoxes"`
 	Priority      *int    `json:"priority"`
 	Category      *string `json:"category"`
 	Status        *string `json:"status"`
+	DueDate       *string `json:"dueDate"`
+	Note          *string `json:"note"`
 }
 
-const brainDumpCols = `id::text, date::text, title, estimate_boxes, priority, category, status, carried_from::text`
+const brainDumpCols = `id::text, date::text, title, estimate_boxes, priority, category, status, carried_from::text, due_date::text, note`
 
 func scanBrainDump(row interface{ Scan(...any) error }) (BrainDumpItem, error) {
 	var it BrainDumpItem
-	err := row.Scan(&it.ID, &it.Date, &it.Title, &it.EstimateBoxes, &it.Priority, &it.Category, &it.Status, &it.CarriedFrom)
+	err := row.Scan(&it.ID, &it.Date, &it.Title, &it.EstimateBoxes, &it.Priority, &it.Category, &it.Status, &it.CarriedFrom, &it.DueDate, &it.Note)
 	return it, err
 }
 
@@ -55,10 +65,10 @@ func (s *Store) CreateBrainDump(ctx context.Context, userID string, it BrainDump
 		it.Status = "open"
 	}
 	row := s.pool.QueryRow(ctx, `
-		INSERT INTO brain_dump_items (user_id, date, title, estimate_boxes, priority, category, status)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO brain_dump_items (user_id, date, title, estimate_boxes, priority, category, status, due_date, note)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING `+brainDumpCols,
-		userID, it.Date, it.Title, it.EstimateBoxes, it.Priority, it.Category, it.Status)
+		userID, it.Date, it.Title, it.EstimateBoxes, it.Priority, it.Category, it.Status, it.DueDate, it.Note)
 	created, err := scanBrainDump(row)
 	return created, mapErr(err)
 }
@@ -70,10 +80,12 @@ func (s *Store) UpdateBrainDump(ctx context.Context, userID, id string, p BrainD
 			estimate_boxes = COALESCE($4::smallint, estimate_boxes),
 			priority       = COALESCE($5::smallint, priority),
 			category       = COALESCE($6::text, category),
-			status         = COALESCE($7::text, status)
+			status         = COALESCE($7::text, status),
+			due_date       = CASE WHEN $8::text IS NULL THEN due_date WHEN $8 = '' THEN NULL ELSE $8::date END,
+			note           = CASE WHEN $9::text IS NULL THEN note WHEN $9 = '' THEN NULL ELSE $9 END
 		WHERE user_id = $1 AND id = $2
 		RETURNING `+brainDumpCols,
-		userID, id, p.Title, p.EstimateBoxes, p.Priority, p.Category, p.Status)
+		userID, id, p.Title, p.EstimateBoxes, p.Priority, p.Category, p.Status, p.DueDate, p.Note)
 	updated, err := scanBrainDump(row)
 	return updated, mapErr(err)
 }
@@ -139,4 +151,81 @@ func (s *Store) BrainDumpStatusCounts(ctx context.Context, userID, from, to stri
 		counts[status] = n
 	}
 	return counts, mapErr(rows.Err())
+}
+
+// MoveBrainDump puts an item on a day (date) or back into the backlog (nil).
+func (s *Store) MoveBrainDump(ctx context.Context, userID, id string, date *string) (BrainDumpItem, error) {
+	row := s.pool.QueryRow(ctx, `
+		UPDATE brain_dump_items SET date = $3::date
+		WHERE user_id = $1 AND id = $2
+		RETURNING `+brainDumpCols, userID, id, date)
+	it, err := scanBrainDump(row)
+	return it, mapErr(err)
+}
+
+// BacklogItem is a backlog entry with its progress across every day it was scheduled on.
+type BacklogItem struct {
+	BrainDumpItem
+	ScheduledBoxes int `json:"scheduledBoxes"`
+	DoneBoxes      int `json:"doneBoxes"`
+}
+
+// ListBacklog returns open backlog items plus the most recently finished ones.
+func (s *Store) ListBacklog(ctx context.Context, userID string) ([]BacklogItem, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT `+prefixed("i.", brainDumpCols)+`,
+			COALESCE(SUM(b.end_slot - b.start_slot), 0)::int,
+			COALESCE(SUM(b.end_slot - b.start_slot) FILTER (WHERE b.done), 0)::int
+		FROM brain_dump_items i
+		LEFT JOIN time_blocks b ON b.brain_dump_id = i.id AND b.user_id = i.user_id
+		WHERE i.user_id = $1 AND i.date IS NULL AND i.status IN ('open', 'done')
+		GROUP BY i.id
+		ORDER BY i.status, i.created_at
+		LIMIT 500`, userID)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+
+	items := []BacklogItem{}
+	for rows.Next() {
+		var it BacklogItem
+		if err := rows.Scan(&it.ID, &it.Date, &it.Title, &it.EstimateBoxes, &it.Priority, &it.Category, &it.Status,
+			&it.CarriedFrom, &it.DueDate, &it.Note, &it.ScheduledBoxes, &it.DoneBoxes); err != nil {
+			return nil, err
+		}
+		items = append(items, it)
+	}
+	return items, mapErr(rows.Err())
+}
+
+// prefixed qualifies each column of a select list with a table alias.
+func prefixed(alias, cols string) string {
+	parts := strings.Split(cols, ", ")
+	for i, p := range parts {
+		parts[i] = alias + p
+	}
+	return strings.Join(parts, ", ")
+}
+
+// BacklogDueDates maps each date in [from, to] to the titles of open backlog items due that day.
+func (s *Store) BacklogDueDates(ctx context.Context, userID, from, to string) (map[string][]string, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT due_date::text, title FROM brain_dump_items
+		WHERE user_id = $1 AND date IS NULL AND status = 'open' AND due_date BETWEEN $2 AND $3
+		ORDER BY due_date, priority NULLS LAST, created_at`, userID, from, to)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+
+	dues := map[string][]string{}
+	for rows.Next() {
+		var date, title string
+		if err := rows.Scan(&date, &title); err != nil {
+			return nil, err
+		}
+		dues[date] = append(dues[date], title)
+	}
+	return dues, mapErr(rows.Err())
 }

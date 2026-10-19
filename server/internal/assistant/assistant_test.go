@@ -18,7 +18,7 @@ func snapshot() Snapshot {
 			{ID: "read", Date: day, StartSlot: 120, EndSlot: 123, Title: "책 읽기"},      // 20:00-20:30
 			{ID: "meet", Date: "2026-10-15", StartSlot: 78, EndSlot: 84, Title: "회의"}, // tomorrow 13:00-14:00
 		},
-		Items: []store.BrainDumpItem{{ID: "contract", Date: day, Title: "계약서 검토", EstimateBoxes: &four, Status: "open"}},
+		Items: []store.BrainDumpItem{{ID: "contract", Date: ptr(day), Title: "계약서 검토", EstimateBoxes: &four, Status: "open"}},
 	}
 }
 
