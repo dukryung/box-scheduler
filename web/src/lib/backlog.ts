@@ -60,3 +60,14 @@ export function deadlineCounts(items: BacklogItem[], today: string) {
     soon: open.filter((it) => it.dueDate! >= today && it.dueDate! <= addDays(today, 1)).length,
   }
 }
+
+/**
+ * Backlog items worth offering to the AI planner for `date`: open, with time left,
+ * and either high priority or due within a week (overdue counts). Mirrors the server.
+ */
+export function urgentBacklog(items: BacklogItem[], date: string): BacklogItem[] {
+  return items.filter((it) => {
+    if (it.status !== 'open' || (it.estimateBoxes !== null && it.scheduledBoxes >= it.estimateBoxes)) return false
+    return it.priority === 1 || (it.dueDate !== null && it.dueDate <= addDays(date, 7))
+  })
+}

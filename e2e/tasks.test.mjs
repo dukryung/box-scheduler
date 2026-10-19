@@ -100,7 +100,7 @@ try {
   check((await find('E2E 계약서 검토'))?.date === null, '나중에 puts it back in the backlog')
 
   // 9. AI suggestion can include urgent backlog items
-  await day.getByRole('button', { name: 'AI 제안' }).click()
+  await day.getByRole('region', { name: '아직 시간표에 없음' }).getByRole('button', { name: 'AI로 시간 정하기' }).click()
   check(await day.getByLabel('보관함에서 마감이 가깝거나 중요한 일도 함께 넣기').isChecked(), 'backlog option on by default')
   await day.getByRole('button', { name: '제안 받기' }).click()
   await day.getByRole('button', { name: /개 블록 적용/ }).waitFor()
@@ -132,9 +132,46 @@ try {
   await phone.getByText('E2E 치과 예약').waitFor()
   check(await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'backlog page: no horizontal scroll at 390px')
 
+  // 12. Deleting from the backlog: plain items go at once; scheduled ones ask first
+  const plain = await json('POST', '/tasks', { title: 'E2E 그냥 지울 일' })
+  const placed = await json('POST', '/tasks', { title: 'E2E 블록 있는 일' })
+  await json('POST', '/blocks', { date: iso(3), startSlot: 60, endSlot: 63, title: 'E2E 블록 있는 일', brainDumpId: placed.id })
+  const done1 = await json('POST', '/tasks', { title: 'E2E 끝낸 일 1' })
+  const done2 = await json('POST', '/tasks', { title: 'E2E 끝낸 일 2' })
+  for (const d of [done1, done2]) await json('PATCH', `/brain-dump/${d.id}`, { status: 'done' })
+  const listPage = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  watchErrors(listPage, errors)
+  await listPage.goto(`${BASE}/tasks`)
+  await listPage.getByText('E2E 그냥 지울 일').waitFor()
+  await listPage.getByRole('button', { name: 'E2E 그냥 지울 일 삭제' }).click()
+  await listPage.waitForTimeout(400)
+  check(!(await find('E2E 그냥 지울 일')), 'item without blocks deleted at once')
+  await listPage.getByRole('button', { name: 'E2E 블록 있는 일 삭제' }).click()
+  check(await listPage.getByText('시간표의 블록 1개도 함께 지워져요.').isVisible(), 'scheduled item asks before deleting')
+  await listPage.getByRole('alertdialog', { name: '삭제 확인' }).getByRole('button', { name: '삭제' }).click()
+  await listPage.waitForTimeout(400)
+  check(!(await find('E2E 블록 있는 일')) && (await json('GET', `/days/${iso(3)}`)).blocks.length === 0, 'item and its block deleted')
+  await listPage.getByText(/^완료 \d+/).click()
+  await listPage.getByRole('button', { name: '완료한 일 모두 지우기' }).click()
+  await listPage.getByRole('alertdialog', { name: '삭제 확인' }).getByRole('button', { name: '모두 지우기' }).click()
+  await listPage.waitForTimeout(600)
+  check((await backlog()).every((it) => it.status !== 'done'), '완료한 일 모두 지우기 clears finished items')
+  await listPage.close()
+
+  const tab = await browser.newPage({ viewport: { width: 1440, height: 900 } })
+  watchErrors(tab, errors)
+  await json('POST', '/tasks', { title: 'E2E 탭에서 지울 일' })
+  await tab.goto(`${BASE}/day/${iso(4)}`)
+  await tab.getByRole('tab', { name: /보관함/ }).click()
+  await tab.getByRole('button', { name: 'E2E 탭에서 지울 일 삭제' }).click()
+  await tab.waitForTimeout(400)
+  check(!(await find('E2E 탭에서 지울 일')), 'delete from the day view backlog tab')
+  check(await tab.locator('li', { hasText: 'E2E 치과 예약' }).getByRole('button', { name: '이 날로' }).isVisible(), '이 날로 visible without hovering')
+  await tab.close()
+
   check(errors.length === 0, `no console errors ${errors.join(' | ')}`)
 } finally {
-  for (const d of [iso(0), iso(1)]) {
+  for (const d of [iso(0), iso(1), iso(3), iso(4)]) {
     const { blocks, brainDump } = await json('GET', `/days/${d}`)
     for (const b of blocks) await json('DELETE', `/blocks/${b.id}`)
     for (const it of brainDump) await json('DELETE', `/brain-dump/${it.id}`)

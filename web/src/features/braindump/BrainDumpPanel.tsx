@@ -1,10 +1,13 @@
-import { useState, type Ref } from 'react'
-import { Archive, ArrowRight, CalendarPlus, Close, Grip, Plus } from '../../components/icons'
+import { useState, type ReactNode, type Ref } from 'react'
+import { ConfirmInline } from '../../components/ConfirmInline'
+import { Archive, ArrowRight, CalendarPlus, Close, Grip, Plus, Sparkle } from '../../components/icons'
 import { doneStrike, secondaryButton, srOnly } from '../../components/styles'
 import { groupBrainDump, type Row } from '../../lib/brainDumpGroups'
+import { urgentBacklog } from '../../lib/backlog'
 import { addDays, parseISODate, todayISO } from '../../lib/date'
 import { formatDuration, slotToTime } from '../../lib/slots'
 import { isTempId, useDayStore } from '../../store/dayStore'
+import { useTasksStore } from '../../store/tasksStore'
 import { dropBoxes, type DraggedItem } from './drop'
 
 function shortDate(iso: string) {
@@ -19,11 +22,14 @@ interface Props {
   onPlace: (dragged: DraggedItem) => void
   /** A time chip was pressed: show that block on the timetable. */
   onFocusBlock: (blockId: string) => void
+  /** Opens the AI planner for the items still without a time. */
+  onOpenAI: () => void
   inputRef?: Ref<HTMLInputElement>
 }
 
-export function BrainDumpPanel({ onDragItem, onNavigate, onPlace, onFocusBlock, inputRef }: Props) {
+export function BrainDumpPanel({ onDragItem, onNavigate, onPlace, onFocusBlock, onOpenAI, inputRef }: Props) {
   const { date, blocks, brainDump, linkedItems, addBrainDump, carryOver } = useDayStore()
+  const backlog = useTasksStore((s) => s.items)
   const [text, setText] = useState('')
   const [carried, setCarried] = useState<{ count: number; to: string } | null>(null)
 
@@ -32,6 +38,22 @@ export function BrainDumpPanel({ onDragItem, onNavigate, onPlace, onFocusBlock, 
   const carryTarget = date < todayISO() ? todayISO() : addDays(date, 1)
   const empty = brainDump.length === 0 && linkedItems.length === 0
   const rowProps = { onDragItem, onPlace, onFocusBlock }
+
+  // What the AI planner would work on: items without a time, items with part of
+  // their estimate still unplaced, and urgent backlog items.
+  const partial = groups.scheduled.filter((r) => !r.linked && r.item.estimateBoxes !== null && scheduledOf(r) < r.item.estimateBoxes).length
+  const urgent = urgentBacklog(backlog, date).length
+  const canPlan = groups.unscheduled.length + partial + urgent > 0
+  const planButton = canPlan ? (
+    <button
+      onClick={onOpenAI}
+      title={partial || urgent ? '남은 시간이 있는 일과 보관함의 급한 일도 함께 배치해요' : undefined}
+      className="flex h-8 items-center gap-1.5 rounded-lg border border-ai-line px-2.5 text-xs font-semibold text-ai-ink hover:bg-ai-soft"
+    >
+      <Sparkle size={14} />
+      AI로 시간 정하기
+    </button>
+  ) : null
 
   return (
     <section className="flex h-full flex-col gap-4">
@@ -77,7 +99,10 @@ export function BrainDumpPanel({ onDragItem, onNavigate, onPlace, onFocusBlock, 
             적은 항목은 시간표에 넣을 수 있어요.
           </p>
         )}
-        <Group label="아직 시간표에 없음" rows={groups.unscheduled} {...rowProps} />
+        <Group label="아직 시간표에 없음" rows={groups.unscheduled} action={planButton} showEmpty={canPlan} {...rowProps} />
+        {!empty && !canPlan && groups.unscheduled.length === 0 && (
+          <p className="px-1 text-xs text-muted">모든 일이 시간표에 있어요.</p>
+        )}
         <Group label="시간표에 있음" rows={groups.scheduled} {...rowProps} />
         <Group label="완료" rows={groups.done} {...rowProps} />
         <Group label="넘김" rows={groups.closed} {...rowProps} />
@@ -107,21 +132,30 @@ export function BrainDumpPanel({ onDragItem, onNavigate, onPlace, onFocusBlock, 
   )
 }
 
+const scheduledOf = (r: Row) => r.sessions.reduce((n, b) => n + b.endSlot - b.startSlot, 0)
+
 interface GroupProps {
   label: string
   rows: Row[]
+  /** Shown at the right of the heading. */
+  action?: ReactNode
+  /** Keep the heading (and its action) even with no rows. */
+  showEmpty?: boolean
   onDragItem: (dragged: DraggedItem | null) => void
   onPlace: (dragged: DraggedItem) => void
   onFocusBlock: (blockId: string) => void
 }
 
-function Group({ label, rows, ...rowProps }: GroupProps) {
-  if (rows.length === 0) return null
+function Group({ label, rows, action, showEmpty, ...rowProps }: GroupProps) {
+  if (rows.length === 0 && !showEmpty) return null
   return (
     <section aria-label={label} className="flex flex-col gap-2">
-      <h3 className="px-1 text-xs font-semibold text-muted">
-        {label} <span className="font-normal">{rows.length}</span>
-      </h3>
+      <div className="flex min-h-8 items-center justify-between gap-2 px-1">
+        <h3 className="text-xs font-semibold text-muted">
+          {label} <span className="font-normal">{rows.length}</span>
+        </h3>
+        {action}
+      </div>
       <ul className="flex flex-col gap-2">
         {rows.map((row) => (
           <BrainDumpRow key={row.item.id} row={row} {...rowProps} />
@@ -289,15 +323,11 @@ function BrainDumpRow({ row, onDragItem, onPlace, onFocusBlock }: RowProps) {
       </div>
 
       {confirmDelete && (
-        <div role="alertdialog" aria-label="삭제 확인" className="flex flex-wrap items-center gap-2 rounded-lg bg-danger/5 px-3 py-2 text-xs text-ink-2">
-          <span className="flex-1">시간표의 블록 {sessions.length}개도 함께 지워져요.</span>
-          <button onClick={() => setConfirmDelete(false)} className="rounded-md px-2 py-1 hover:bg-subtle">
-            취소
-          </button>
-          <button onClick={() => void deleteBrainDump(item.id)} className="rounded-md bg-danger px-2.5 py-1 font-semibold text-white">
-            삭제
-          </button>
-        </div>
+        <ConfirmInline
+          message={`시간표의 블록 ${sessions.length}개도 함께 지워져요.`}
+          onConfirm={() => void deleteBrainDump(item.id)}
+          onCancel={() => setConfirmDelete(false)}
+        />
       )}
     </li>
   )

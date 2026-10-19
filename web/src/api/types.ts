@@ -31,6 +31,8 @@ export interface BrainDumpItem {
 export interface BacklogItem extends BrainDumpItem {
   scheduledBoxes: number
   doneBoxes: number
+  /** Timetable blocks that deleting the item also deletes. */
+  blockCount: number
 }
 
 export interface Day {

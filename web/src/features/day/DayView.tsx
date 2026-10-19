@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { OVERLAP_MESSAGE, api } from '../../api/client'
 import type { AssistantOp } from '../../api/types'
-import { ChevronLeft, ChevronRight, Flag, Mic, Plus, Sparkle } from '../../components/icons'
+import { ChevronLeft, ChevronRight, Flag, Mic, Plus } from '../../components/icons'
 import { card, iconButton } from '../../components/styles'
 import { WEEKDAYS, addDays, parseISODate, todayISO } from '../../lib/date'
 import { SLOT_MINUTES, nextBoundary, slotToTime, type SlotRange } from '../../lib/slots'
@@ -208,6 +208,7 @@ export function DayView({ date }: { date: string }) {
         onDragItem={setDragged}
         onNavigate={go}
         onPlace={setPlacing}
+        onOpenAI={openAI}
         onFocusBlock={(id) => {
           if (mobile) setMobileTab('grid')
           setFocus((f) => ({ id, n: (f?.n ?? 0) + 1 }))
@@ -286,18 +287,6 @@ export function DayView({ date }: { date: string }) {
           className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-ai-line text-ai-ink md:hidden"
         >
           <Mic size={18} />
-        </button>
-        <button
-          onClick={() => (aiOpen ? closeAI() : openAI())}
-          aria-pressed={aiOpen}
-          aria-label="AI 제안"
-          className={`flex h-10 items-center gap-2 rounded-[10px] px-3 text-sm font-semibold md:px-4 ${
-            aiOpen ? 'bg-ai text-white' : 'border border-ai-line text-ai-ink hover:bg-ai-soft'
-          }`}
-        >
-          <Sparkle size={16} />
-          <span className="md:hidden">AI</span>
-          <span className="hidden md:inline">AI 제안</span>
         </button>
       </TopBar>
 

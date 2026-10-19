@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BacklogItem } from '../api/types'
-import { deadlineCounts, dueLabel, groupBacklog } from './backlog'
+import { deadlineCounts, dueLabel, groupBacklog, urgentBacklog } from './backlog'
 
 const T = '2026-10-19'
 const item = (id: string, over: Partial<BacklogItem> = {}): BacklogItem => ({
@@ -16,6 +16,7 @@ const item = (id: string, over: Partial<BacklogItem> = {}): BacklogItem => ({
   note: null,
   scheduledBoxes: 0,
   doneBoxes: 0,
+  blockCount: 0,
   ...over,
 })
 
@@ -62,5 +63,22 @@ describe('deadlineCounts', () => {
       item('e', { dueDate: '2026-10-10', status: 'done' }),
     ]
     expect(deadlineCounts(items, T)).toEqual({ overdue: 1, soon: 2 })
+  })
+})
+
+describe('urgentBacklog', () => {
+  it('picks open items with time left that are important or due within a week', () => {
+    const picked = urgentBacklog(
+      [
+        item('soon', { dueDate: '2026-10-26' }),
+        item('late', { dueDate: '2026-11-30' }),
+        item('overdue', { dueDate: '2026-10-01' }),
+        item('important', { priority: 1 }),
+        item('covered', { priority: 1, estimateBoxes: 6, scheduledBoxes: 6 }),
+        item('finished', { priority: 1, status: 'done' }),
+      ],
+      T,
+    )
+    expect(picked.map((i) => i.id)).toEqual(['soon', 'overdue', 'important'])
   })
 })

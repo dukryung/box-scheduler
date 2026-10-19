@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
 import type { BacklogItem } from '../../api/types'
-import { ArrowRight, CalendarPlus, Grip, Plus } from '../../components/icons'
+import { ConfirmInline } from '../../components/ConfirmInline'
+import { ArrowRight, CalendarPlus, Close, Grip, Plus } from '../../components/icons'
 import { srOnly } from '../../components/styles'
 import { groupBacklog } from '../../lib/backlog'
 import { todayISO } from '../../lib/date'
@@ -20,7 +21,7 @@ interface Props {
 
 /** Backlog in the day view: drag (desktop) or 넣기 (phone) into the timetable. */
 export function BacklogPanel({ date, onDragItem, onPlace, onMovedToDay }: Props) {
-  const { items, add, moveToDay } = useTasksStore()
+  const { items, add, moveToDay, remove } = useTasksStore()
   const [text, setText] = useState('')
   const today = todayISO()
   const open = groupBacklog(items, today)
@@ -74,6 +75,7 @@ export function BacklogPanel({ date, onDragItem, onPlace, onMovedToDay }: Props)
             onMove={async () => {
               if (await moveToDay(it.id, date)) onMovedToDay(it.title)
             }}
+            onDelete={() => void remove(it.id)}
           />
         ))}
       </ul>
@@ -93,9 +95,11 @@ interface RowProps {
   onDragItem: (dragged: DraggedItem | null) => void
   onPlace: (dragged: DraggedItem) => void
   onMove: () => void
+  onDelete: () => void
 }
 
-function BacklogRow({ item, today, dayLabel, onDragItem, onPlace, onMove }: RowProps) {
+function BacklogRow({ item, today, dayLabel, onDragItem, onPlace, onMove, onDelete }: RowProps) {
+  const [confirming, setConfirming] = useState(false)
   const dragged = () => ({ item, boxes: dropBoxes(item, item.scheduledBoxes) })
   return (
     <li
@@ -106,33 +110,49 @@ function BacklogRow({ item, today, dayLabel, onDragItem, onPlace, onMove }: RowP
         onDragItem(dragged())
       }}
       onDragEnd={() => onDragItem(null)}
-      className="group flex items-start gap-2.5 rounded-xl border border-grid bg-surface p-3 md:cursor-grab md:hover:border-line-strong md:active:cursor-grabbing"
+      className="group flex flex-col gap-2 rounded-xl border border-grid bg-surface p-3 md:cursor-grab md:hover:border-line-strong md:active:cursor-grabbing"
     >
-      <Grip className="mt-0.5 hidden shrink-0 text-faint md:block" />
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <span className="text-[15px] leading-snug font-medium break-words md:text-sm">{item.title}</span>
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
-          <PriorityBadge priority={item.priority} />
-          {item.dueDate && <DueBadge due={item.dueDate} today={today} />}
-          <span className="font-mono text-ink-2">{item.estimateBoxes ? formatDuration(item.estimateBoxes) : '시간 미정'}</span>
-          <Progress item={item} />
+      <div className="flex items-start gap-2.5">
+        <Grip className="mt-0.5 hidden shrink-0 text-faint md:block" />
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <span className="text-[15px] leading-snug font-medium break-words md:text-sm">{item.title}</span>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+            <PriorityBadge priority={item.priority} />
+            {item.dueDate && <DueBadge due={item.dueDate} today={today} />}
+            <span className="font-mono text-ink-2">{item.estimateBoxes ? formatDuration(item.estimateBoxes) : '시간 미정'}</span>
+            <Progress item={item} />
+          </div>
         </div>
-      </div>
-      <div className="flex shrink-0 flex-col items-end gap-1.5 self-center md:flex-row md:items-center">
+        <div className="flex shrink-0 flex-col items-end gap-1.5 self-center md:flex-row md:items-center">
+          <button
+            onClick={() => onPlace(dragged())}
+            className="flex h-10 items-center gap-1.5 rounded-[10px] border border-line-strong bg-surface px-3 text-[13px] font-semibold md:hidden"
+          >
+            <CalendarPlus size={16} />
+            넣기
+          </button>
+          <button
+            onClick={onMove}
+            className="rounded-md border border-line px-2 py-1 text-xs font-medium text-ink-2 hover:bg-subtle"
+          >
+            {dayLabel}
+          </button>
+        </div>
         <button
-          onClick={() => onPlace(dragged())}
-          className="flex h-10 items-center gap-1.5 rounded-[10px] border border-line-strong bg-surface px-3 text-[13px] font-semibold md:hidden"
+          aria-label={`${item.title} 삭제`}
+          onClick={() => (item.blockCount > 0 ? setConfirming(true) : onDelete())}
+          className="shrink-0 rounded-md p-1 text-faint hover:text-danger"
         >
-          <CalendarPlus size={16} />
-          넣기
-        </button>
-        <button
-          onClick={onMove}
-          className="rounded-md px-2 py-1 text-xs font-medium text-ink-2 hover:bg-subtle md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
-        >
-          {dayLabel}
+          <Close size={14} />
         </button>
       </div>
+      {confirming && (
+        <ConfirmInline
+          message={`보관함에서 지우면 시간표의 블록 ${item.blockCount}개도 함께 지워져요.`}
+          onConfirm={onDelete}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
     </li>
   )
 }

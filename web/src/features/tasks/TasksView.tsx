@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import type { BacklogItem } from '../../api/types'
+import { ConfirmInline } from '../../components/ConfirmInline'
 import { ArrowRight, Close, Plus } from '../../components/icons'
 import { card, doneStrike, srOnly } from '../../components/styles'
 import { GROUP_LABELS, deadlineCounts, groupBacklog } from '../../lib/backlog'
@@ -11,7 +12,8 @@ import { BottomTabs, TopBar, ViewSwitch } from '../nav/ViewSwitch'
 import { DueBadge, PriorityBadge, Progress } from './parts'
 
 export function TasksView() {
-  const { items, loaded, error, load, add, setError } = useTasksStore()
+  const { items, loaded, error, load, add, remove, setError } = useTasksStore()
+  const [clearing, setClearing] = useState(false)
   const [text, setText] = useState('')
   const [notice, setNotice] = useState<string | null>(null)
   // Which row's editor is open; kept here so it survives the row moving to another group.
@@ -103,6 +105,25 @@ export function TasksView() {
               <summary className="cursor-pointer px-1 py-1 text-sm font-semibold text-muted">
                 {GROUP_LABELS[key]} {list.length}
               </summary>
+              <div className="mt-2 flex flex-col gap-2">
+                {clearing ? (
+                  <ConfirmInline
+                    message={`완료한 일 ${list.length}개를 보관함에서 모두 지울까요?${
+                      list.some((it) => it.blockCount > 0) ? ' 시간표에 남은 블록도 함께 지워져요.' : ''
+                    }`}
+                    confirmLabel="모두 지우기"
+                    onConfirm={() => {
+                      setClearing(false)
+                      for (const it of list) void remove(it.id)
+                    }}
+                    onCancel={() => setClearing(false)}
+                  />
+                ) : (
+                  <button onClick={() => setClearing(true)} className="self-end rounded-md px-2 py-1 text-xs font-medium text-danger hover:bg-danger/10">
+                    완료한 일 모두 지우기
+                  </button>
+                )}
+              </div>
               <ul className="mt-2 flex flex-col gap-2">
                 {list.map((it) => (
                   <TaskRow
@@ -167,6 +188,7 @@ interface RowProps {
 
 function TaskRow({ item, today, open, onToggle, onMoved }: RowProps) {
   const { update, remove, moveToDay } = useTasksStore()
+  const [confirming, setConfirming] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const done = item.status === 'done'
   const estimate = item.estimateBoxes
@@ -258,11 +280,23 @@ function TaskRow({ item, today, open, onToggle, onMoved }: RowProps) {
           >
             {open ? '접기' : '편집'}
           </button>
-          <button aria-label={`${item.title} 삭제`} onClick={() => void remove(item.id)} className="rounded-md p-1.5 text-faint hover:text-danger">
+          <button
+            aria-label={`${item.title} 삭제`}
+            onClick={() => (item.blockCount > 0 ? setConfirming(true) : void remove(item.id))}
+            className="rounded-md p-1.5 text-faint hover:text-danger"
+          >
             <Close size={14} />
           </button>
         </div>
       </div>
+
+      {confirming && (
+        <ConfirmInline
+          message={`시간표의 블록 ${item.blockCount}개도 함께 지워져요.`}
+          onConfirm={() => void remove(item.id)}
+          onCancel={() => setConfirming(false)}
+        />
+      )}
 
       {open && (
         <div className="flex flex-col gap-3 border-t border-grid pt-3 sm:pl-8">

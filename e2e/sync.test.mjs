@@ -48,6 +48,12 @@ try {
   check((await row('장보기').textContent()).includes('미배정'), 'brain dump item marked 미배정')
   check((await day()).blocks.length === 1, 'not added to the timetable')
   check((await page.getByRole('tab', { name: /Brain Dump/ }).textContent()).includes('1'), 'tab counts 1 미배정')
+  const plan = section('아직 시간표에 없음').getByRole('button', { name: 'AI로 시간 정하기' })
+  check((await plan.isVisible()) && (await page.getByRole('banner').getByRole('button', { name: /AI/ }).count()) === 0, 'AI planner button sits with the 미배정 items, not in the top bar')
+  await plan.click()
+  await page.getByRole('heading', { name: 'AI 일정 제안' }).waitFor()
+  await page.getByRole('button', { name: '닫기' }).click()
+  await section('아직 시간표에 없음').waitFor()
 
   // 3. Done carries both ways
   await openBlock('점심 먹기')

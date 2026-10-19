@@ -162,6 +162,8 @@ type BacklogItem struct {
 	BrainDumpItem
 	ScheduledBoxes int `json:"scheduledBoxes"`
 	DoneBoxes      int `json:"doneBoxes"`
+	// BlockCount is how many timetable blocks deleting the item would also delete.
+	BlockCount int `json:"blockCount"`
 }
 
 // ListBacklog returns open backlog items plus the most recently finished ones.
@@ -169,7 +171,8 @@ func (s *Store) ListBacklog(ctx context.Context, userID string) ([]BacklogItem, 
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+prefixed("i.", brainDumpCols)+`,
 			COALESCE(SUM(b.end_slot - b.start_slot), 0)::int,
-			COALESCE(SUM(b.end_slot - b.start_slot) FILTER (WHERE b.done), 0)::int
+			COALESCE(SUM(b.end_slot - b.start_slot) FILTER (WHERE b.done), 0)::int,
+			count(b.id)::int
 		FROM brain_dump_items i
 		LEFT JOIN time_blocks b ON b.brain_dump_id = i.id AND b.user_id = i.user_id
 		WHERE i.user_id = $1 AND i.date IS NULL AND i.status IN ('open', 'done')
@@ -185,7 +188,7 @@ func (s *Store) ListBacklog(ctx context.Context, userID string) ([]BacklogItem, 
 	for rows.Next() {
 		var it BacklogItem
 		if err := rows.Scan(&it.ID, &it.Date, &it.Title, &it.EstimateBoxes, &it.Priority, &it.Category, &it.Status,
-			&it.CarriedFrom, &it.DueDate, &it.Note, &it.ScheduledBoxes, &it.DoneBoxes); err != nil {
+			&it.CarriedFrom, &it.DueDate, &it.Note, &it.ScheduledBoxes, &it.DoneBoxes, &it.BlockCount); err != nil {
 			return nil, err
 		}
 		items = append(items, it)
