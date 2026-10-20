@@ -81,6 +81,9 @@ export const api = {
     body: { message: string; history: AssistantTurn[]; viewDate: string; today: string; now: string },
     signal?: AbortSignal,
   ) => request<AssistantPreview>('/assistant/preview', { method: 'POST', body: JSON.stringify(body), signal }),
+  /** Rewrites a dictated transcript into a short request; nothing is sent or saved. */
+  assistantTidy: (text: string, signal?: AbortSignal) =>
+    request<{ text: string }>('/assistant/tidy', { method: 'POST', body: JSON.stringify({ text }), signal }),
   assistantApply: (ops: AssistantOp[]) =>
     request<{ undo: AssistantOp[] }>('/assistant/apply', { method: 'POST', body: JSON.stringify({ ops }) }),
   aiApply: (date: string, blocks: SuggestedBlock[], estimates: Suggestion['estimates']) =>

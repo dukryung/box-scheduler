@@ -43,7 +43,7 @@ func NewRouter(s *store.Store, planner ai.Provider) http.Handler {
 
 		r.Group(func(r chi.Router) {
 			r.Use(singleUser)
-			r.Use(timeoutExcept(30*time.Second, "/ai-suggest", "/assistant/preview"))
+			r.Use(timeoutExcept(30*time.Second, "/ai-suggest", "/assistant/preview", "/assistant/tidy"))
 
 			r.Get("/days/{date}", a.getDay)
 			r.Put("/days/{date}/note", a.putDayNote)
@@ -52,6 +52,7 @@ func NewRouter(s *store.Store, planner ai.Provider) http.Handler {
 			r.Post("/days/{date}/ai-apply", a.aiApply)
 			r.Post("/assistant/preview", a.assistantPreview)
 			r.Post("/assistant/apply", a.assistantApply)
+			r.Post("/assistant/tidy", a.assistantTidy)
 			r.Get("/calendar", a.getCalendar)
 			r.Get("/stats", a.getStats)
 

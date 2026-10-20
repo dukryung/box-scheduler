@@ -34,20 +34,39 @@ const ERRORS: Record<string, string> = {
   'audio-capture': '마이크를 찾지 못했어요',
 }
 
+// Dictation keeps listening through short pauses and stops after this much quiet.
+const SILENCE_MS = 5000
+
 /**
- * Korean speech-to-text in the browser. `interim` updates while speaking;
- * `onFinal` gets the finished sentence once the person stops talking.
+ * Korean dictation in the browser. `transcript` grows live while the person
+ * talks; `onDone` gets the whole text when listening stops (mic tapped again,
+ * or a few seconds of silence).
  */
-export function useSpeech(onFinal: (text: string) => void) {
+export function useSpeech(onDone: (text: string) => void) {
   const [listening, setListening] = useState(false)
-  const [interim, setInterim] = useState('')
+  const [transcript, setTranscript] = useState('')
   const [error, setError] = useState<string | null>(null)
   const recRef = useRef<Recognition | null>(null)
-  const onFinalRef = useRef(onFinal)
-  onFinalRef.current = onFinal
+  const textRef = useRef('')
+  const silenceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onDoneRef = useRef(onDone)
+  onDoneRef.current = onDone
   const supported = recognitionCtor() !== undefined
 
-  useEffect(() => () => recRef.current?.abort(), [])
+  useEffect(
+    () => () => {
+      if (silenceRef.current) clearTimeout(silenceRef.current)
+      recRef.current?.abort()
+    },
+    [],
+  )
+
+  const stop = useCallback(() => recRef.current?.stop(), [])
+
+  const armSilenceTimer = useCallback(() => {
+    if (silenceRef.current) clearTimeout(silenceRef.current)
+    silenceRef.current = setTimeout(() => recRef.current?.stop(), SILENCE_MS)
+  }, [])
 
   const start = useCallback(() => {
     const Ctor = recognitionCtor()
@@ -55,31 +74,36 @@ export function useSpeech(onFinal: (text: string) => void) {
     const rec = new Ctor()
     rec.lang = 'ko-KR'
     rec.interimResults = true
-    rec.continuous = false
+    rec.continuous = true
     rec.onresult = (e) => {
+      // In continuous mode `results` holds everything said since start(): finished
+      // phrases plus the one still being spoken.
       let text = ''
-      let final = false
-      for (let i = 0; i < e.results.length; i++) {
-        text += e.results[i][0].transcript
-        final ||= e.results[i].isFinal
-      }
-      setInterim(text)
-      if (final && text.trim()) onFinalRef.current(text.trim())
+      for (let i = 0; i < e.results.length; i++) text += e.results[i][0].transcript
+      textRef.current = text
+      setTranscript(text)
+      armSilenceTimer()
     }
-    rec.onerror = (e) => setError(ERRORS[e.error] ?? '음성 인식에 실패했어요')
+    rec.onerror = (e) => {
+      if (e.error !== 'aborted') setError(ERRORS[e.error] ?? '음성 인식에 실패했어요')
+    }
     rec.onend = () => {
+      if (silenceRef.current) clearTimeout(silenceRef.current)
       recRef.current = null
       setListening(false)
-      setInterim('')
+      setTranscript('')
+      const text = textRef.current.trim()
+      textRef.current = ''
+      if (text) onDoneRef.current(text)
     }
     recRef.current = rec
+    textRef.current = ''
     setError(null)
-    setInterim('')
+    setTranscript('')
     setListening(true)
+    armSilenceTimer()
     rec.start()
-  }, [])
+  }, [armSilenceTimer])
 
-  const stop = useCallback(() => recRef.current?.stop(), [])
-
-  return { supported, listening, interim, error, start, stop }
+  return { supported, listening, transcript, error, start, stop }
 }

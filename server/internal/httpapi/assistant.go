@@ -117,6 +117,41 @@ func (a *API) assistantPreview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// assistantTidy rewrites a dictated transcript into a short request. Nothing is
+// sent or saved: the text goes back into the field for the person to check.
+func (a *API) assistantTidy(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Text string `json:"text"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	body.Text = strings.TrimSpace(body.Text)
+	if body.Text == "" || len([]rune(body.Text)) > 2*maxMessageLen {
+		writeError(w, http.StatusBadRequest, "정리할 내용을 1000자 이내로 보내 주세요")
+		return
+	}
+	started := time.Now()
+	text, err := a.planner.Tidy(r.Context(), body.Text)
+	if err != nil {
+		if errors.Is(err, ai.ErrNotConfigured) {
+			writeError(w, http.StatusServiceUnavailable, "AI가 설정되지 않았어요.")
+			return
+		}
+		slog.Error("tidy failed", "err", err, "elapsed", time.Since(started))
+		writeError(w, http.StatusBadGateway, "AI 응답을 받지 못했어요: "+err.Error())
+		return
+	}
+	if text == "" {
+		text = body.Text
+	}
+	if len([]rune(text)) > maxMessageLen {
+		text = string([]rune(text)[:maxMessageLen])
+	}
+	slog.Info("tidy", "elapsed", time.Since(started))
+	writeJSON(w, http.StatusOK, map[string]string{"text": text})
+}
+
 // assistantApply saves previewed ops (or an undo list) all at once and returns
 // the ops that undo them.
 func (a *API) assistantApply(w http.ResponseWriter, r *http.Request) {

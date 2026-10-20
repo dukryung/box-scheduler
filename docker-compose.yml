@@ -23,6 +23,7 @@ services:
       # claude-cli (subscription token) | anthropic-api (API key) | fake | none
       AI_PROVIDER: ${AI_PROVIDER:-claude-cli}
       AI_MODEL: ${AI_MODEL:-claude-opus-5-5}
+      AI_TIDY_MODEL: ${AI_TIDY_MODEL:-claude-haiku-5-5}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:

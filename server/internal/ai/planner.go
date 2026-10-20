@@ -73,6 +73,7 @@ type Planner interface {
 type Provider interface {
 	Planner
 	Assistant
+	Tidier
 }
 
 // caller makes one Claude call whose output is constrained to schema and
@@ -81,7 +82,9 @@ type caller interface {
 	call(ctx context.Context, system, prompt string, schema map[string]any, out any) error
 }
 
-type claudeProvider struct{ c caller }
+// claudeProvider uses c for planning and requests, and the quicker fast caller
+// (AI_TIDY_MODEL) for tidying dictation, where waiting matters more than depth.
+type claudeProvider struct{ c, fast caller }
 
 func (p claudeProvider) Plan(ctx context.Context, req PlanRequest) (Plan, error) {
 	var plan Plan
@@ -104,6 +107,7 @@ func (p claudeProvider) Interpret(ctx context.Context, req AssistantRequest) (As
 func NewFromEnv() (Provider, string, error) {
 	provider := envOr("AI_PROVIDER", "claude-cli")
 	model := envOr("AI_MODEL", "claude-opus-5-5")
+	tidyModel := envOr("AI_TIDY_MODEL", "claude-haiku-5-5")
 	timeout, err := time.ParseDuration(envOr("AI_TIMEOUT", "180s"))
 	if err != nil {
 		return nil, provider, fmt.Errorf("AI_TIMEOUT: %w", err)
@@ -111,12 +115,16 @@ func NewFromEnv() (Provider, string, error) {
 
 	switch provider {
 	case "claude-cli":
-		return claudeProvider{&cliCaller{Bin: envOr("CLAUDE_BIN", "claude"), Model: model, Timeout: timeout}}, provider, nil
+		bin := envOr("CLAUDE_BIN", "claude")
+		return claudeProvider{
+			c:    &cliCaller{Bin: bin, Model: model, Timeout: timeout},
+			fast: &cliCaller{Bin: bin, Model: tidyModel, Timeout: timeout},
+		}, provider, nil
 	case "anthropic-api":
 		if os.Getenv("ANTHROPIC_API_KEY") == "" {
 			return disabled{}, provider, nil
 		}
-		return claudeProvider{newAPICaller(model, timeout)}, provider, nil
+		return claudeProvider{c: newAPICaller(model, timeout), fast: newAPICaller(tidyModel, timeout)}, provider, nil
 	case "fake":
 		return Fake{}, provider, nil
 	case "none":
