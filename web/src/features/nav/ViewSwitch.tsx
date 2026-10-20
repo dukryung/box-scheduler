@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
+import { useAuth } from '../../store/authStore'
 import { Logo, TabDay, TabMonth, TabStats, TabTasks } from '../../components/icons'
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { monthOf } from '../../lib/date'
 
-export type View = 'day' | 'month' | 'tasks' | 'stats'
+/** 'other' = a page outside the four views (설정, 사용자 관리); nothing is marked current. */
+export type View = 'day' | 'month' | 'tasks' | 'stats' | 'other'
 
 interface Props {
   view: View
@@ -75,7 +77,25 @@ export function TopBar({ children, phoneTheme = false }: { children: ReactNode; 
       </div>
       {children}
       <ThemeToggle className={phoneTheme ? '' : 'max-md:hidden'} />
+      <AccountButton className={phoneTheme ? '' : 'max-md:hidden'} />
     </header>
   )
 }
 
+
+/** Initial of the signed-in person; opens 설정. */
+function AccountButton({ className }: { className: string }) {
+  const user = useAuth((s) => s.user)
+  if (!user) return null
+  const initial = (user.name || user.email).trim().charAt(0).toUpperCase()
+  return (
+    <Link
+      to="/settings"
+      aria-label={`계정 설정 (${user.email})`}
+      title={user.email}
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-sm font-bold text-accent-ink hover:brightness-95 ${className}`}
+    >
+      {initial}
+    </Link>
+  )
+}

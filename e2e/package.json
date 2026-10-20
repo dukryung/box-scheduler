@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "stack": "docker compose -p boxtest --env-file test.env -f ../docker-compose.yml up -d --build",
-    "test": "node run.mjs"
+    "test": "node run.mjs",
+    "setup-check": "docker compose -p boxsetup --env-file setup.env -f ../docker-compose.yml up -d --build && node setup-check.mjs; s=$?; docker compose -p boxsetup --env-file setup.env -f ../docker-compose.yml down -v; exit $s"
   },
   "devDependencies": {
     "playwright-core": "^1.55.0"

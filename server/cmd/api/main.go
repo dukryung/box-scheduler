@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/pressly/goose/v3"
 
 	"box-scheduler/server/internal/ai"
+	"box-scheduler/server/internal/auth"
 	"box-scheduler/server/internal/httpapi"
 	"box-scheduler/server/internal/store"
 	"box-scheduler/server/migrations"
@@ -54,9 +57,41 @@ func run() error {
 	}
 	slog.Info("ai planner", "provider", provider)
 
+	st := store.New(pool)
+	publicURL := strings.TrimRight(envOr("PUBLIC_URL", "http://localhost:3080"), "/")
+	opts := httpapi.Options{
+		CookieSecure: os.Getenv("COOKIE_SECURE") == "true",
+		LoginPerIP:   atoiOr(os.Getenv("LOGIN_LIMIT_PER_IP")),
+		SignupPerIP:  atoiOr(os.Getenv("SIGNUP_LIMIT_PER_IP")),
+		Google: &auth.Google{
+			ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+			ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+			RedirectURL:  publicURL + "/api/auth/google/callback",
+			AuthURL:      envOr("GOOGLE_AUTH_URL", "https://accounts.google.com/o/oauth2/v2/auth"),
+			TokenURL:     envOr("GOOGLE_TOKEN_URL", "https://oauth2.googleapis.com/token"),
+		},
+	}
+	slog.Info("google sign-in", "enabled", opts.Google.Enabled(), "redirect", opts.Google.RedirectURL)
+	needsSetup, err := st.OwnerNeedsSetup(ctx)
+	if err != nil {
+		return err
+	}
+	if needsSetup {
+		// The owner account holds the data from before accounts existed. Whoever can
+		// read this log claims it once; SETUP_TOKEN pins the token (test stacks).
+		opts.SetupToken = os.Getenv("SETUP_TOKEN")
+		if opts.SetupToken == "" {
+			if opts.SetupToken, _, err = auth.NewToken(); err != nil {
+				return err
+			}
+		}
+		slog.Warn("owner account not set up yet: open this link once to claim it",
+			"url", publicURL+"/setup?token="+opts.SetupToken)
+	}
+
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           httpapi.NewRouter(store.New(pool), planner),
+		Handler:           httpapi.NewRouter(st, planner, opts),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -86,6 +121,11 @@ func migrate(pool *pgxpool.Pool) error {
 		return err
 	}
 	return goose.Up(db, ".")
+}
+
+func atoiOr(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
 }
 
 func envOr(key, fallback string) string {

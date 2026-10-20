@@ -86,6 +86,9 @@ func (a *API) assistantPreview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	started := time.Now()
+	if !a.aiAllowed(w, r, "request") {
+		return
+	}
 	reply, err := a.planner.Interpret(r.Context(), req)
 	if err != nil {
 		if errors.Is(err, ai.ErrNotConfigured) {
@@ -132,6 +135,9 @@ func (a *API) assistantTidy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	started := time.Now()
+	if !a.aiAllowed(w, r, "tidy") {
+		return
+	}
 	text, err := a.planner.Tidy(r.Context(), body.Text)
 	if err != nil {
 		if errors.Is(err, ai.ErrNotConfigured) {

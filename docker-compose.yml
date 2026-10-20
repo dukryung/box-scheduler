@@ -26,6 +26,19 @@ services:
       AI_TIDY_MODEL: ${AI_TIDY_MODEL:-claude-haiku-5-5}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Accounts: set COOKIE_SECURE=true behind HTTPS; PUBLIC_URL is used in the owner setup link.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:${WEB_PORT:-3080}}
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
+      # Google sign-in (Google Cloud Console → OAuth client, redirect URI = PUBLIC_URL/api/auth/google/callback)
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_AUTH_URL: ${GOOGLE_AUTH_URL:-}
+      GOOGLE_TOKEN_URL: ${GOOGLE_TOKEN_URL:-}
+      LOGIN_LIMIT_PER_IP: ${LOGIN_LIMIT_PER_IP:-}
+      SIGNUP_LIMIT_PER_IP: ${SIGNUP_LIMIT_PER_IP:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       db:
         condition: service_healthy

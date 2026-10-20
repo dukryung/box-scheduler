@@ -62,14 +62,29 @@ Brain Dump는 그날 할 일 전체 목록이고, 시간표는 그중 시간을 
 음성으로 말하면 말하는 동안 입력창에 바로 적히고, 말을 마치면(■ 또는 5초 침묵) 더 빠른 모델(`AI_TIDY_MODEL`, 기본 claude-haiku-5-5)이 군말·말 바꿈을 정리한 요청 문장으로 입력창 내용을 바꾼다(`POST /api/assistant/tidy`). "말한 그대로 보기"로 원문을 다시 볼 수 있고, 보내기(↑)는 항상 사용자가 직접 누른다.
 Claude는 정해진 편집(블록 추가·이동·수정·삭제, Brain Dump 추가·수정·삭제)만 제안하고, `internal/assistant`가 대상 확인·10분 단위·겹침을 검사한 뒤 미리보기로 보여준다. 항상 확인 후 적용되며, 적용 직후 10초간 되돌리기가 가능하다.
 
+### 계정과 어드민
+
+- 누구나 이메일 + 비밀번호(8자 이상)로 가입하면 바로 쓸 수 있다. 비밀번호는 argon2id 해시로만 저장하고, 로그인은 서버 세션 쿠키(HttpOnly, SameSite=Lax, 30일)로 유지한다.
+- 계정을 넣기 전의 데이터는 **소유자 계정**으로 이어진다. 처음 실행하면 서버 로그에 한 번만 쓸 수 있는 설정 링크가 나온다: `docker compose logs api | grep setup`. 그 링크에서 이메일·비밀번호를 정하거나 "Google로 소유자 계정 만들기"를 누르면 소유자 겸 첫 어드민이 된다(서버를 다시 시작하면 링크가 바뀐다).
+- **Google 로그인**: `.env`에 `GOOGLE_CLIENT_ID`·`GOOGLE_CLIENT_SECRET`을 넣으면 로그인·가입·소유자 설정 화면에 "Google로 계속하기"가 나타난다(OpenID Connect, PKCE + state 쿠키 + nonce). 설정 방법:
+  1. [Google Cloud Console](https://console.cloud.google.com/) → API 및 서비스 → OAuth 동의 화면(외부, 앱 이름·이메일) → 범위는 기본(`openid`, `email`, `profile`)만.
+  2. 사용자 인증 정보 → OAuth 클라이언트 ID 만들기 → 웹 애플리케이션 → 승인된 리디렉션 URI에 `http://localhost:3080/api/auth/google/callback` (배포 후에는 `PUBLIC_URL/api/auth/google/callback`도) 추가.
+  3. 나온 클라이언트 ID·보안 비밀을 `.env`에 넣고 `docker compose up -d api`.
+  - Google 이메일이 기존 비밀번호 계정과 같으면 자동으로 합치지 않는다(가입 이메일은 인증되지 않았으므로). 비밀번호로 로그인한 뒤 설정 → 로그인 방법에서 Google을 연결한다. Google로만 가입한 계정은 설정에서 비밀번호를 추가할 수 있고, 비밀번호가 있어야 Google 연결을 끊을 수 있다.
+- 어드민(`/admin`): 사용자 검색, 정지·해제, 어드민 권한, 비밀번호 재설정 링크(24시간, 1회), 삭제, 관리 기록. 다른 사람의 일정·할 일 내용은 보이지 않고 개수만 보인다. 소유자 계정과 자기 계정은 여기서 바꿀 수 없다.
+- 로그인 시도는 이메일당 15분 10회, IP당 15분 60회(`LOGIN_LIMIT_PER_IP`), 가입은 IP당 1시간 10회(`SIGNUP_LIMIT_PER_IP`)로 제한한다. 다른 사이트에서 오는 쓰기 요청은 막는다(JSON 요청만 허용 + `Sec-Fetch-Site`).
+- HTTPS 뒤에서 운영할 때는 `COOKIE_SECURE=true`, 설정 링크 주소용으로 `PUBLIC_URL`을 지정한다.
+- AI 기능은 지금 소유자 계정만 서버의 Claude 구독으로 쓸 수 있다. 다른 계정은 다음 단계에서 본인 Anthropic API 키나 로컬 LLM을 연결해 쓰게 된다(구독 OAuth 토큰을 받아 쓰는 방식은 Anthropic 정책상 허용되지 않음).
+
 ### 테스트 환경
 
-브라우저 테스트(`e2e/`)는 실제 데이터와 분리된 compose 프로젝트(포트 3180/8180/5543, AI_PROVIDER=fake)에서만 실행한다. 스크립트는 다른 주소로는 실행을 거부한다.
+브라우저 테스트(`e2e/`)는 가짜 Google(`e2e/fake-google.mjs`)과 함께 실제 데이터와 분리된 compose 프로젝트(포트 3180/8180/5543, AI_PROVIDER=fake)에서만 실행한다. 스크립트는 다른 주소로는 실행을 거부한다.
 
 ```sh
 cd e2e && npm install
 npm run stack   # 테스트 전용 스택 빌드·실행 (e2e/test.env)
 npm test        # *.test.mjs 전체 실행
+npm run setup-check   # 새 DB의 임시 스택(boxsetup, :3280)에서 Google로 소유자 계정 만들기를 확인하고 지움
 ```
 
 ### 프론트엔드 개발 모드
@@ -87,7 +102,12 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | `/month/YYYY-MM` | 월간 달력 (날짜별 블록 요약, 보관함 마감일 표시, 클릭 시 일간으로 이동) |
 | `/tasks` | 할 일 보관함 (날짜 없는 할 일, 마감·중요도별 묶음) |
 | `/stats?range=7d` | 통계 (`7d`, `30d`, `month`, `last-month`) |
-| `/` | 오늘 일간 화면으로 이동 |
+| `/login`, `/signup` | 로그인, 가입 |
+| `/setup?token=…` | 첫 실행 때 소유자 계정 만들기 (서버 로그의 링크) |
+| `/reset?token=…` | 어드민이 발급한 링크로 비밀번호 다시 정하기 |
+| `/settings` | 내 계정, AI 연결, 화면 모드, 비밀번호, 로그아웃, 계정 삭제 |
+| `/admin` | 사용자 관리 (어드민만) |
+| `/` | 오늘 일간 화면으로 이동 (로그인 안 했으면 로그인으로) |
 
 ## 슬롯 규칙
 
@@ -100,6 +120,17 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | Method | Path | 설명 |
 |---|---|---|
 | GET | `/api/health` | 헬스 체크 |
+| POST | `/api/auth/signup` · `/login` · `/logout` | 가입(바로 로그인) · 로그인 · 로그아웃 |
+| GET · PATCH · DELETE | `/api/auth/me` | 내 계정 보기 · 이름 바꾸기 · 계정 삭제(`{password}`) |
+| POST | `/api/auth/password` | 비밀번호 변경 `{current, new}` (다른 기기는 로그아웃) |
+| GET · POST | `/api/auth/setup` | 소유자 설정 필요 여부 · 설정 `{token, email, password, name}` |
+| POST | `/api/auth/reset` | 재설정 링크로 새 비밀번호 `{token, password}` |
+| GET | `/api/auth/providers` | 켜진 로그인 방법 `{google}` |
+| GET | `/api/auth/google/start?next=&setup=&link=1` · `/api/auth/google/callback` | Google 로그인 시작(브라우저 이동) · Google에서 돌아오는 주소 |
+| POST | `/api/auth/google/unlink` | Google 연결 끊기 (비밀번호가 있을 때만) |
+| GET | `/api/admin/users?q=` · `/api/admin/stats` · `/api/admin/audit` | 사용자 목록(개수만) · 현황 · 관리 기록 (어드민) |
+| PATCH · DELETE | `/api/admin/users/{id}` | 권한·상태 변경 `{role?, status?}` · 계정 삭제 (어드민) |
+| POST | `/api/admin/users/{id}/reset-link` | 비밀번호 재설정 링크 발급 (어드민) |
 | GET | `/api/days/{date}` | 하루치 블록 + Brain Dump + 메모 |
 | PUT | `/api/days/{date}/note` | 하루 메모 저장 `{note}` |
 | GET | `/api/tasks` | 할 일 보관함 목록 (날짜 없는 항목, 여러 날에 걸친 배정·완료 시간 포함) |
@@ -120,4 +151,4 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | PATCH | `/api/brain-dump/{id}` | Brain Dump 수정 |
 | DELETE | `/api/brain-dump/{id}` | Brain Dump 삭제 |
 
-현재는 단일 사용자 모드(시드된 기본 사용자)로 동작한다.
+`/api/auth/signup`·`login`·`setup`·`reset`과 헬스 체크를 뺀 모든 API는 로그인이 필요하고, 데이터는 계정별로 나뉜다.

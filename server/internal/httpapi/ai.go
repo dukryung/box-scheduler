@@ -49,6 +49,20 @@ type suggestResponse struct {
 	Notes     string           `json:"notes"`
 }
 
+// aiAllowed lets the owner use the server's AI (their own subscription) and
+// records the call. Other accounts need an AI connection of their own.
+func (a *API) aiAllowed(w http.ResponseWriter, r *http.Request, feature string) bool {
+	u := currentUser(r)
+	if !u.IsOwner {
+		writeErrorCode(w, http.StatusForbidden, "ai_not_connected", "AI 기능은 설정에서 내 AI를 연결하면 쓸 수 있어요")
+		return false
+	}
+	if err := a.store.CountAICall(r.Context(), u.ID, feature); err != nil {
+		slog.Warn("count ai call", "err", err)
+	}
+	return true
+}
+
 // aiSuggest asks the planner for a plan and places it into the day's free time.
 // Nothing is saved; the client previews the result and applies what it accepts.
 func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
@@ -118,6 +132,9 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	started := time.Now()
+	if !a.aiAllowed(w, r, "plan") {
+		return
+	}
 	plan, err := a.planner.Plan(r.Context(), req)
 	if err != nil {
 		if errors.Is(err, ai.ErrNotConfigured) {

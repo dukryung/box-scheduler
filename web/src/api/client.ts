@@ -1,5 +1,8 @@
 import type {
+  AdminStats,
+  AdminUser,
   AssistantOp,
+  AuditEntry,
   AssistantPreview,
   AssistantTurn,
   BacklogItem,
@@ -10,9 +13,27 @@ import type {
   Stats,
   SuggestedBlock,
   Suggestion,
+  User,
 } from './types'
 
 export const OVERLAP_MESSAGE = '다른 블록과 시간이 겹쳐요'
+
+/** An error answer from the API; `code` is set for errors the app acts on. */
+export class ApiError extends Error {
+  status: number
+  code?: string
+  constructor(status: number, message: string, code?: string) {
+    super(message)
+    this.status = status
+    this.code = code
+  }
+}
+
+/** Called when the session has ended (signed out elsewhere, expired, suspended). */
+let onSignedOut: () => void = () => {}
+export const setSignedOutHandler = (fn: () => void) => {
+  onSignedOut = fn
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -20,9 +41,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...init?.headers },
   })
   if (!res.ok) {
-    if (res.status === 409) throw new Error(OVERLAP_MESSAGE)
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.error ?? `HTTP ${res.status}`)
+    const signedOut = res.status === 401 || (res.status === 403 && body.error === '이용이 정지된 계정이에요')
+    if (signedOut && !path.startsWith('/auth/')) onSignedOut()
+    if (res.status === 409 && !path.startsWith('/auth/') && !path.startsWith('/admin/')) throw new ApiError(409, OVERLAP_MESSAGE)
+    throw new ApiError(res.status, body.error ?? `HTTP ${res.status}`, body.code)
   }
   return (res.status === 204 ? undefined : res.json()) as Promise<T>
 }
@@ -46,6 +69,42 @@ export interface NewTask {
   dueDate?: string | null
   priority?: number | null
   note?: string | null
+}
+
+const post = (body: unknown) => ({ method: 'POST', body: JSON.stringify(body) })
+
+export const authApi = {
+  me: () => request<User>('/auth/me'),
+  login: (email: string, password: string) => request<User>('/auth/login', post({ email, password })),
+  signup: (email: string, password: string, name: string) => request<User>('/auth/signup', post({ email, password, name })),
+  logout: () => request<void>('/auth/logout', { method: 'POST' }),
+  setupNeeded: () => request<{ needed: boolean }>('/auth/setup'),
+  setup: (token: string, email: string, password: string, name: string) =>
+    request<User>('/auth/setup', post({ token, email, password, name })),
+  reset: (token: string, password: string) => request<User>('/auth/reset', post({ token, password })),
+  updateMe: (name: string) => request<User>('/auth/me', { method: 'PATCH', body: JSON.stringify({ name }) }),
+  changePassword: (current: string, next: string) => request<void>('/auth/password', post({ current, new: next })),
+  deleteMe: (check: { password?: string; confirm?: string }) => request<void>('/auth/me', { method: 'DELETE', body: JSON.stringify(check) }),
+  providers: () => request<{ google: boolean }>('/auth/providers'),
+  googleUnlink: () => request<User>('/auth/google/unlink', { method: 'POST' }),
+  /** Full-page URL that starts "Google로 계속하기". */
+  googleStartURL: (params: { next?: string; setup?: string; link?: boolean }) => {
+    const q = new URLSearchParams()
+    if (params.next) q.set('next', params.next)
+    if (params.setup) q.set('setup', params.setup)
+    if (params.link) q.set('link', '1')
+    return `/api/auth/google/start?${q}`
+  },
+}
+
+export const adminApi = {
+  users: (q: string) => request<{ users: AdminUser[] }>(`/admin/users?q=${encodeURIComponent(q)}`),
+  stats: () => request<AdminStats>('/admin/stats'),
+  audit: () => request<{ entries: AuditEntry[] }>('/admin/audit'),
+  update: (id: string, patch: { role?: User['role']; status?: User['status'] }) =>
+    request<User>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  remove: (id: string) => request<void>(`/admin/users/${id}`, { method: 'DELETE' }),
+  resetLink: (id: string) => request<{ path: string; expiresIn: string }>(`/admin/users/${id}/reset-link`, { method: 'POST' }),
 }
 
 export const api = {

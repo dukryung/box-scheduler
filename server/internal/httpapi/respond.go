@@ -22,6 +22,11 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
+// writeErrorCode adds a machine-readable code the web app can act on.
+func writeErrorCode(w http.ResponseWriter, status int, code, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg, "code": code})
+}
+
 // writeStoreError maps store sentinel errors to HTTP status codes.
 func writeStoreError(w http.ResponseWriter, err error) {
 	switch {

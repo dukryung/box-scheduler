@@ -142,3 +142,42 @@ export interface AssistantTurn {
   role: 'user' | 'assistant'
   text: string
 }
+
+export interface User {
+  id: string
+  email: string
+  name: string
+  role: 'user' | 'admin'
+  status: 'active' | 'suspended'
+  isOwner: boolean
+  createdAt: string
+  lastLoginAt: string | null
+  hasPassword: boolean
+  /** A Google account is linked. */
+  google: boolean
+}
+
+/** What admins see about an account: facts and counts, never schedule contents. */
+export interface AdminUser extends User {
+  blocks: number
+  items: number
+  aiCalls30d: number
+}
+
+export interface AdminStats {
+  users: number
+  active7d: number
+  signups7d: number
+  suspended: number
+  aiCalls7d: number
+  admins: number
+}
+
+export interface AuditEntry {
+  id: number
+  admin: string
+  action: string
+  target: string
+  detail: string
+  createdAt: string
+}
