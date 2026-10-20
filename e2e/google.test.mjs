@@ -41,6 +41,7 @@ try {
 
   // 3. A Google-only account can add a password, then unlink Google
   await p.goto(`${BASE}/settings`)
+  await p.getByRole('heading', { name: '로그인 방법' }).waitFor()
   check(await p.getByText('없음 (아래에서 정할 수 있어요)').isVisible(), 'settings: no password yet')
   check((await p.getByRole('button', { name: '연결 끊기' }).count()) === 0, 'cannot unlink Google without a password')
   await p.getByLabel('새 비밀번호 (8자 이상)').fill('gina-pass-12')
