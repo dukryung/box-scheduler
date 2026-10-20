@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"box-scheduler/server/internal/ai"
+	"box-scheduler/server/internal/aigate"
 	"box-scheduler/server/internal/auth"
 	"box-scheduler/server/internal/netguard"
 	"box-scheduler/server/internal/secretbox"
@@ -53,7 +54,9 @@ type API struct {
 	loginIPLimit *auth.Limiter
 	signupLimit  *auth.Limiter
 
-	aiHTTP *http.Client // guarded client for accounts' local LLMs
+	aiHTTP      *http.Client // guarded client (no internal addresses)
+	serviceHTTP *http.Client // the admins' service AI, which may be on the local network
+	gate        *aigate.Gate // queue in front of the service AI
 
 	// active remembers who was already marked active today ("userID" → "YYYY-MM-DD").
 	active sync.Map
@@ -73,6 +76,8 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 		loginIPLimit: &auth.Limiter{Max: orDefault(opts.LoginPerIP, 60), Window: 15 * time.Minute},
 		signupLimit:  &auth.Limiter{Max: orDefault(opts.SignupPerIP, 10), Window: time.Hour},
 		aiHTTP:       opts.NetPolicy.Client(aiCallTime),
+		serviceHTTP:  netguard.Parse("0.0.0.0/0,::/0").Client(aiCallTime),
+		gate:         aigate.New(20, 2*time.Minute),
 	}
 
 	r := chi.NewRouter()
@@ -103,7 +108,7 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(sameOrigin)
 			r.Use(a.requireUser)
-			r.Use(timeoutExcept(30*time.Second, "/ai-suggest", "/assistant/preview", "/assistant/tidy", "/ai/connections", "/test", "/ai/models"))
+			r.Use(timeoutExcept(30*time.Second, "/ai-suggest", "/assistant/preview", "/assistant/tidy", "/ai/connections", "/test"))
 
 			r.Get("/days/{date}", a.getDay)
 			r.Put("/days/{date}/note", a.putDayNote)
@@ -138,7 +143,7 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 			r.Post("/ai/connections/{id}/test", a.testAIConnection)
 			r.Delete("/ai/connections/{id}", a.deleteAIConnection)
 			r.Put("/ai/settings", a.putAISettings)
-			r.Post("/ai/models", a.listModels)
+			r.Get("/ai/queue", a.aiQueue)
 		})
 	})
 	return r

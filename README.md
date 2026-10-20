@@ -88,15 +88,24 @@ Claude는 정해진 편집(블록 추가·이동·수정·삭제, Brain Dump 추
   - Google 이메일이 기존 비밀번호 계정과 같으면 자동으로 합치지 않는다(가입 이메일은 인증되지 않았으므로). 비밀번호로 로그인한 뒤 설정 → 로그인 방법에서 Google을 연결한다. Google로만 가입한 계정은 설정에서 비밀번호를 추가할 수 있고, 비밀번호가 있어야 Google 연결을 끊을 수 있다.
 - 로그인 시도는 이메일당 15분 10회, IP당 15분 60회(`LOGIN_LIMIT_PER_IP`), 가입은 IP당 1시간 10회(`SIGNUP_LIMIT_PER_IP`)로 제한한다. 다른 사이트에서 오는 쓰기 요청은 막는다(JSON 요청만 허용 + `Sec-Fetch-Site`).
 - HTTPS 뒤에서 운영할 때는 `COOKIE_SECURE=true`, 설정 링크 주소용으로 `PUBLIC_URL`을 지정한다.
-- AI 기능은 계정마다 **내 AI**를 연결해 쓴다(아래). 소유자 계정은 서버의 Claude 구독도 고를 수 있다. 다른 사람의 구독 OAuth 토큰을 받아 쓰는 방식은 Anthropic 정책상 허용되지 않아 지원하지 않는다.
+- AI 기능은 기본으로 **서비스 AI**(관리자가 등록한 로컬 LLM)를 쓰고, 원하면 **내 Anthropic API 키**를 연결한다(아래). 소유자 계정은 서버의 Claude 구독도 고를 수 있다. 다른 사람의 구독 OAuth 토큰을 받아 쓰는 방식은 Anthropic 정책상 허용되지 않아 지원하지 않는다.
 
-### 내 AI 연결 (설정 → AI 연결)
+### 서비스 AI (관리자 콘솔 → 서비스 AI)
 
-- **Anthropic API 키**: console.anthropic.com에서 만든 키 + 모델(Opus 5.5 / Sonnet 5.5 / Haiku 5.5). 비용은 그 계정으로 청구된다. 음성 정리는 이 키로 Haiku를 쓴다.
-- **로컬 LLM**: OpenAI 호환 서버(Ollama `:11434`, LM Studio `:1234`) 주소 + 모델("모델 불러오기"로 목록에서 선택). 출력은 JSON 스키마로 강제하고, 지원하지 않는 서버는 JSON 모드로 다시 요청한다.
-- 저장하기 전에 짧은 요청으로 연결을 확인한다. 기능별로(AI로 시간 정하기 · 말로 요청하기 · 음성 정리) 쓸 AI를 고르며, 처음 연결한 AI가 모든 기능에 기본으로 들어간다.
-- 키는 `AI_SECRET_KEY`(64자리 hex, `openssl rand -hex 32`)로 AES-256-GCM 암호화해 저장하고, 화면·API·관리자 콘솔 어디에도 다시 나오지 않는다(끝 4자리만).
-- 로컬 LLM 주소는 서버 내부망을 찌르지 못하게 루프백·사설·링크로컬(클라우드 메타데이터)·CGNAT 주소를 막고, DNS 조회 뒤 실제로 붙는 IP를 다시 확인하며 리디렉션은 따라가지 않는다. 집 네트워크의 Mac mini를 쓰려면 `.env`에 허용 목록을 넣는다: `AI_ALLOW_PRIVATE=192.168.0.0/16` 또는 `AI_ALLOW_PRIVATE=mac-mini.local`. 서버를 클라우드에 올리면 Tailscale·Cloudflare Tunnel 같은 주소를 쓴다.
+서비스가 가진 로컬 LLM(예: Mac mini의 Ollama)을 모든 계정이 기본 AI로 쓴다. 사용자는 아무것도 연결하지 않아도 된다.
+
+- 최고 관리자가 콘솔에서 서버 주소(OpenAI 호환, 예: `http://192.168.0.23:11434`), 기능별 모델, 동시 처리 수, 사용자별 하루 한도를 정한다. 저장할 때 모델 목록과 짧은 요청으로 연결을 확인하고, 비밀번호를 다시 묻고, 관리 기록에 남긴다. 키가 있으면 `AI_SECRET_KEY`로 암호화해 저장한다.
+- **하루 한도**(기본 30회, 세 기능 합계, 한국 시간 자정에 초기화): 넘으면 `429 ai_limit`과 함께 내 API 키를 연결하라고 안내한다. 소유자 계정은 서버 Claude 구독을 쓰므로 한도가 없다.
+- **대기열**: 앱 서버가 서비스 AI로 가는 요청을 동시 처리 수만큼만 보내고, 나머지는 최대 20건·2분까지 줄을 세운다(`GET /api/ai/queue`로 화면에 "AI 대기 중 · 앞에 n건"). 넘치면 `503 ai_busy`. 앱 서버를 여러 대로 늘리면 대기열은 서버마다 따로 돈다.
+- 모든 AI 호출은 `ai_calls`(출처: service · own · server, 걸린 시간, 대기 시간, 성공)에 남아 한도와 콘솔 통계(24시간 호출·성공률·평균 응답·한도 다 쓴 사람, 14일 추이)에 쓰인다. 90일 지나면 지운다.
+- Qwen3 모델은 생각 단계를 끄고(`/no_think`), 답에 `<think>`가 섞여 와도 걷어 낸다. JSON 스키마 출력을 지원하지 않는 서버에는 JSON 모드로 다시 요청한다.
+- **Mac mini (M4 16GB) 준비**: `ollama pull qwen3:8b`(약 5GB) 하나로 세 기능을 모두 쓰고, `launchctl setenv OLLAMA_HOST 0.0.0.0`, `OLLAMA_NUM_PARALLEL 1`, `OLLAMA_KEEP_ALIVE 24h` 뒤 Ollama 재시작, 잠자기 방지. 콘솔의 동시 처리 수는 1. 공개 서비스에는 상업적 이용이 허용된 모델(Qwen·Gemma·Mistral 등)을 쓰고, 일정 내용이 이 컴퓨터로 간다는 점을 개인정보처리방침에 적는다.
+
+### 내 API 키 (설정 → AI 연결, 선택)
+
+- 서비스 AI 한도를 넘었거나 더 큰 모델이 필요하면 각자 Anthropic API 키(console.anthropic.com)를 연결한다. 비용은 그 계정에 청구되고, 음성 정리는 이 키로 Haiku를 쓴다. 저장 전에 짧은 요청으로 확인하며, 처음 연결하면 모든 기능이 그 키로 바뀐다(기능별로 다시 고를 수 있음).
+- 키는 `AI_SECRET_KEY`(64자리 hex, `openssl rand -hex 32`)로 AES-256-GCM 암호화해 저장하고, 화면·API·콘솔 어디에도 다시 나오지 않는다(끝 4자리만).
+- 사용자가 자기 로컬 LLM 주소를 넣는 기능은 없앴다(서비스 AI로 대신). 남은 내부 주소 차단(`internal/netguard`, `AI_ALLOW_PRIVATE`)은 사용자 입력 주소에만 쓰인다.
 
 ### 관리자 콘솔 (http://localhost:3090)
 
@@ -108,7 +117,7 @@ Claude는 정해진 편집(블록 추가·이동·수정·삭제, Brain Dump 추
   docker compose exec admin-api admin disable --email …  /  enable --email …
   ```
 - 역할: **최고 관리자**(`super`, 관리자 계정 관리까지) / **운영자**(`operator`, 사용자 관리). 최고 관리자는 한 명 이상 남아야 한다.
-- 화면: 대시보드(사용자·활동·가입·AI 사용, 30일 추이), 사용자(검색·필터·정렬·페이지), 사용자 상세(로그인 방법, 기기별 세션과 강제 로그아웃, 운영 메모, AI 사용, 정지·재설정 링크·삭제), 관리 기록(관리자 로그인 성공/실패 포함, IP), 관리자 계정(최고 관리자만).
+- 화면: 대시보드(사용자·활동·가입·AI 사용, 30일 추이), 서비스 AI(설정·상태·통계), 사용자(검색·필터·정렬·페이지), 사용자 상세(로그인 방법, 기기별 세션과 강제 로그아웃, 운영 메모, AI 사용, 정지·재설정 링크·삭제), 관리 기록(관리자 로그인 성공/실패 포함, IP), 관리자 계정(최고 관리자만).
 - 보안: 세션 쿠키 `bs_admin`(SameSite=Strict, 8시간, 30분 미사용 시 만료), 비밀번호 5회 실패 시 15분 잠금, 2단계 코드 재사용 거부, 삭제·권한 변경 같은 작업은 비밀번호 재확인, 응답 `no-store`, 화면 `noindex`·프레임 금지. 앱 쿠키로는 관리자 API를, 관리자 쿠키로는 앱 API를 쓸 수 없다.
 - 다른 사람의 일정·할 일 내용은 콘솔에서 보이지 않는다(DB 권한으로도 막혀 있음). 공개 배포 전까지 콘솔은 이 컴퓨터(127.0.0.1)에서만 열린다.
 
@@ -172,9 +181,10 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | POST | `/api/days/{date}/ai-suggest` | AI 일정 제안 `{fromSlot, toSlot}` (저장하지 않음) |
 | POST | `/api/days/{date}/ai-apply` | 수락한 제안 블록 일괄 저장 (겹치면 전체 409) |
 | GET | `/api/ai` | 내 AI 연결 목록(키 제외), 기능별 선택, 고를 수 있는 모델 |
-| POST · DELETE | `/api/ai/connections` · `/api/ai/connections/{id}` | 연결 추가(확인 후 저장) `{kind: anthropic\|openai, model, apiKey?, baseUrl?, label?}` · 삭제 |
-| POST | `/api/ai/connections/{id}/test` · `/api/ai/models` | 연결 다시 확인 · 로컬 서버의 모델 목록 `{baseUrl, apiKey?}` |
-| PUT | `/api/ai/settings` | 기능별 AI `{plan, request, tidy}` (`server`(소유자만) · 연결 id · `''`) |
+| POST · DELETE | `/api/ai/connections` · `/api/ai/connections/{id}` | 내 API 키 연결(확인 후 저장) `{kind: anthropic, model, apiKey, label?}` · 삭제 |
+| POST | `/api/ai/connections/{id}/test` | 연결 다시 확인 |
+| PUT | `/api/ai/settings` | 기능별 AI `{plan, request, tidy}` (`service` · `server`(소유자만) · 연결 id · `''`) |
+| GET | `/api/ai/queue` | 서비스 AI 대기열 `{running, waiting}` |
 | POST | `/api/assistant/tidy` | 받아 적은 음성을 짧은 요청 문장으로 정리해 돌려줌 (보내기·저장 안 함) |
 | POST | `/api/assistant/preview` | 말로 한 요청을 Claude가 편집 목록으로 바꾸고, 서버가 겹침을 검사해 미리보기로 돌려줌 (저장 안 함) |
 | POST | `/api/assistant/apply` | 미리본 편집을 한 번에 적용하고 되돌리기용 편집 목록을 반환 (겹치면 전체 409) |
@@ -202,3 +212,5 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | POST | `/api/users/{id}/sessions/revoke` · `/reset-link` · `/notes` | 강제 로그아웃 `{session?}` · 재설정 링크 · 메모 |
 | GET | `/api/audit?q=&action=&target=` | 관리 기록 |
 | GET · POST · PATCH | `/api/admins` · `/api/admins/{id}` · `/api/admins/{id}/reset` | 관리자 계정 (최고 관리자, 비밀번호 재확인) |
+| GET · PUT | `/api/service-ai` | 서비스 AI 설정과 통계 · 저장(최고 관리자, 확인 후 저장, 비밀번호 재확인) |
+| POST | `/api/service-ai/test` · `/api/service-ai/models` | 지금 연결 확인 · 서버의 모델 목록 |

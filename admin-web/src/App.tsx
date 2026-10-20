@@ -6,6 +6,7 @@ import { Dashboard } from './pages/Dashboard'
 import { Layout } from './pages/Layout'
 import { Login } from './pages/Login'
 import { Me } from './pages/Me'
+import { ServiceAI } from './pages/ServiceAI'
 import { UserDetail } from './pages/UserDetail'
 import { Users } from './pages/Users'
 import { useSession } from './session'
@@ -39,6 +40,7 @@ export default function App() {
             <Route path="/users" element={<Users />} />
             <Route path="/users/:id" element={<UserDetail />} />
             <Route path="/audit" element={<Audit />} />
+            <Route path="/service-ai" element={<ServiceAI />} />
             <Route path="/me" element={<Me />} />
             <Route element={<SuperOnly />}>
               <Route path="/admins" element={<Admins />} />

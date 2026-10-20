@@ -4,6 +4,7 @@ import { aiButton, aiOutlineButton } from '../../components/styles'
 import { SLOTS_PER_DAY, formatDuration, slotToTime } from '../../lib/slots'
 import type { AISuggestionState } from './useAISuggestion'
 import { AIError } from '../../components/AIError'
+import { useAIQueue } from '../../lib/useAIQueue'
 
 const STEP = 3 // 30-minute choices
 const DEFAULT_FROM = 54 // 09:00
@@ -29,6 +30,7 @@ export function AIPanel({ ai, nowSlot, onClose, onApplied }: Props) {
   const [includeBacklog, setIncludeBacklog] = useState(true)
   const { status, suggestion, error } = ai
   const busy = status === 'loading' || status === 'applying'
+  const waiting = useAIQueue(status === 'loading')
 
   const timeSelect = (label: string, value: number, onChange: (v: number) => void, valid: (v: number) => boolean) => (
     <label className="flex flex-col gap-1 text-xs text-muted">
@@ -87,7 +89,7 @@ export function AIPanel({ ai, nowSlot, onClose, onApplied }: Props) {
       {status === 'loading' && (
         <div role="status" className="flex items-center gap-2.5 rounded-xl bg-ai-soft px-3.5 py-3 text-sm text-ai-ink">
           <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-ai border-t-transparent" />
-          Claude가 하루를 짜고 있어요… 보통 10~30초 걸려요.
+          {waiting > 0 ? `AI 대기 중이에요 · 앞에 ${waiting}건` : 'AI가 하루를 짜고 있어요… 보통 10~30초 걸려요.'}
           <button onClick={ai.cancel} className="ml-auto font-medium underline">
             취소
           </button>

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router'
 import { btn } from '../format'
 import { useSession } from '../session'
-import { IconDashboard, IconLog, IconLogout, IconMenu, IconShield, IconUsers, Logo, ThemeToggle } from '../ui'
+import { IconChip, IconDashboard, IconLog, IconLogout, IconMenu, IconShield, IconUsers, Logo, ThemeToggle } from '../ui'
 
 /** The console frame: menu on the left (a drawer on narrow screens), page on the right. */
 export function Layout() {
@@ -12,6 +12,7 @@ export function Layout() {
   const items = [
     { to: '/', label: '대시보드', Icon: IconDashboard, end: true },
     { to: '/users', label: '사용자', Icon: IconUsers },
+    { to: '/service-ai', label: '서비스 AI', Icon: IconChip },
     { to: '/audit', label: '관리 기록', Icon: IconLog },
     ...(account.role === 'super' ? [{ to: '/admins', label: '관리자 계정', Icon: IconShield }] : []),
   ]

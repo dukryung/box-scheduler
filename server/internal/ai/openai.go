@@ -65,6 +65,10 @@ type chatResponse struct {
 }
 
 func (c *openAICaller) call(ctx context.Context, system, prompt string, schema map[string]any, out any) error {
+	if strings.Contains(strings.ToLower(c.Model), "qwen3") {
+		// Qwen3 thinks out loud by default; for short structured answers that only costs time.
+		prompt += " /no_think"
+	}
 	messages := []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": prompt}}
 	body := map[string]any{
 		"model":       c.Model,
@@ -105,6 +109,9 @@ func (c *openAICaller) call(ctx context.Context, system, prompt string, schema m
 		return errors.New("local model's answer was cut off")
 	}
 	content := strings.TrimSpace(res.Choices[0].Message.Content)
+	if i := strings.LastIndex(content, "</think>"); i >= 0 { // reasoning models may still think first
+		content = strings.TrimSpace(content[i+len("</think>"):])
+	}
 	content = strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(content, "```json"), "```"), "```")
 	if err := json.Unmarshal([]byte(strings.TrimSpace(content)), out); err != nil {
 		return fmt.Errorf("local model's answer did not match the format: %w", err)

@@ -9,6 +9,7 @@ import { cleanTranscript } from '../../lib/transcript'
 import { useSpeech } from '../../lib/useSpeech'
 import type { AssistantState } from './useAssistant'
 import { AIError } from '../../components/AIError'
+import { useAIQueue } from '../../lib/useAIQueue'
 
 interface BarProps {
   assistant: AssistantState
@@ -248,6 +249,7 @@ interface PanelProps {
 /** The conversation's latest turn: Claude's answer and the edits waiting for confirmation. */
 export function AssistantPanel({ assistant, viewDate, onApplied, onClose }: PanelProps) {
   const { status, preview, message, error } = assistant
+  const waiting = useAIQueue(status === 'loading')
   const applyRef = useRef<HTMLButtonElement>(null)
   const hasRemoval = preview?.changes.some((c) => c.kind === 'remove' || c.kind === 'item-remove')
 
@@ -271,7 +273,7 @@ export function AssistantPanel({ assistant, viewDate, onApplied, onClose }: Pane
       {status === 'loading' && (
         <div role="status" className="flex items-center gap-2.5 rounded-xl bg-ai-soft px-3.5 py-3 text-sm text-ai-ink">
           <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-ai border-t-transparent" />
-          요청을 이해하고 있어요… 보통 5~15초 걸려요.
+          {waiting > 0 ? `AI 대기 중이에요 · 앞에 ${waiting}건` : '요청을 이해하고 있어요… 보통 5~15초 걸려요.'}
         </div>
       )}
       {error && <AIError error={error} />}

@@ -5,7 +5,8 @@
 import { createServer } from 'node:http'
 
 export const GOOD_KEY = 'sk-ant-e2e-good-key-0042'
-export const LOCAL_MODELS = ['qwen3:14b', 'llama3.2:3b']
+// slow:1b takes 2 seconds per answer (for queue tests); qwen3 answers think first.
+export const LOCAL_MODELS = ['qwen3:8b', 'llama3.2:3b', 'slow:1b']
 
 function answer(schema, prompt, who) {
   const props = schema?.properties ?? {}
@@ -30,7 +31,11 @@ export function startFakeAI(port = 3198) {
       if (!LOCAL_MODELS.includes(body.model)) return json(404, { error: { message: `model "${body.model}" not found` } })
       const schema = body.response_format?.json_schema?.schema
       const prompt = body.messages?.find((m) => m.role === 'user')?.content ?? ''
-      return json(200, { choices: [{ message: { role: 'assistant', content: JSON.stringify(answer(schema, prompt, 'local')) }, finish_reason: 'stop' }] })
+      if (body.model === 'slow:1b') await new Promise((r) => setTimeout(r, 2000))
+      let content = JSON.stringify(answer(schema, prompt.replace(/ \/no_think$/, ''), 'local'))
+      if (body.model.startsWith('qwen3')) content = `<think>생각 중</think>\n${content}`
+      fake.calls.push({ who: 'local-done', model: body.model, auth: req.headers.authorization ?? '' })
+      return json(200, { choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }] })
     }
     if (path === '/anthropic/v1/messages') {
       fake.calls.push({ who: 'anthropic', model: body.model })

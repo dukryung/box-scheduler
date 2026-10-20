@@ -28,6 +28,7 @@ import (
 	"box-scheduler/server/internal/adminapi"
 	"box-scheduler/server/internal/adminstore"
 	"box-scheduler/server/internal/auth"
+	"box-scheduler/server/internal/secretbox"
 )
 
 func main() {
@@ -164,12 +165,17 @@ func firstPassword(fromStdin bool) (pw string, shown bool, err error) {
 
 func serve(ctx context.Context, st *adminstore.Store) error {
 	addr := ":" + envOr("PORT", "8090")
+	box, err := secretbox.New(os.Getenv("AI_SECRET_KEY"))
+	if err != nil {
+		return err
+	}
 	srv := &http.Server{
 		Addr: addr,
 		Handler: adminapi.NewRouter(st, adminapi.Options{
 			CookieSecure: os.Getenv("COOKIE_SECURE") == "true",
 			ServiceURL:   envOr("SERVICE_PUBLIC_URL", "http://localhost:3080"),
 			LoginPerIP:   atoiOr(os.Getenv("ADMIN_LOGIN_LIMIT_PER_IP"), 30),
+			SecretBox:    box,
 		}),
 		ReadHeaderTimeout: 10 * time.Second,
 	}

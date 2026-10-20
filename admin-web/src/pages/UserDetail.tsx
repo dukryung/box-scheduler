@@ -156,7 +156,7 @@ export function UserDetail() {
         <div className="flex flex-col gap-4">
           <Card title="AI 사용 (30일)">
             <p className="border-b border-line px-4 py-2.5 text-xs text-muted">
-              {u.isOwner ? '서버 Claude 구독 사용 가능 · ' : ''}내 AI 연결 {u.aiConnections}개
+              {u.isOwner ? '서버 Claude 구독 · 한도 없음' : `서비스 AI 오늘 ${u.serviceToday}회`} · 내 API 키 {u.aiConnections}개
             </p>
             <ul className="flex flex-col gap-1.5 px-4 py-3 text-sm">
               {Object.keys(AI_FEATURE).map((f) => (

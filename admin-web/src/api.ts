@@ -51,6 +51,7 @@ export interface UserDetail extends User {
   sessions: UserSession[]
   aiByFeature: Record<string, number>
   activeDays30d: number
+  serviceToday: number
   notes: Note[]
 }
 
@@ -80,6 +81,41 @@ export interface AuditEntry {
   detail: string
   ip: string
   createdAt: string
+}
+
+export interface ServiceAIConfig {
+  enabled: boolean
+  baseUrl: string
+  keyHint: string
+  planModel: string
+  requestModel: string
+  tidyModel: string
+  concurrency: number
+  dailyLimit: number
+  updatedAt: string
+  updatedBy: string
+  checkedAt: string | null
+  lastError: string
+}
+
+export interface ServiceAIStats {
+  calls24h: number
+  failed24h: number
+  busy24h: number
+  avgMs24h: number
+  avgWaitMs24h: number
+  usersToday: number
+  usersAtLimit: number
+  successRate: number
+  callsByDay: number[]
+  ownCalls24h: number
+  serverCalls24h: number
+}
+
+export interface ServiceAIState {
+  config: ServiceAIConfig
+  stats: ServiceAIStats
+  keysEnabled: boolean
 }
 
 export class ApiError extends Error {
@@ -130,6 +166,12 @@ export const api = {
   addNote: (id: string, body: string) => request<Note>(`/users/${id}/notes`, send('POST', { body })),
   audit: (p: { q?: string; action?: string; target?: string; limit?: number; offset?: number }) =>
     request<{ entries: AuditEntry[]; total: number }>(`/audit?${new URLSearchParams(Object.entries(p).map(([k, v]) => [k, String(v ?? '')]))}`),
+
+  serviceAI: () => request<ServiceAIState>('/service-ai'),
+  saveServiceAI: (c: Partial<ServiceAIConfig> & { apiKey?: string; clearKey?: boolean; password: string }) =>
+    request<ServiceAIState>('/service-ai', send('PUT', c)),
+  testServiceAI: () => request<{ ok: boolean; error: string }>('/service-ai/test', send('POST')),
+  serviceModels: (baseUrl: string, apiKey: string) => request<{ models: string[] }>('/service-ai/models', send('POST', { baseUrl, apiKey })),
 
   admins: () => request<{ admins: Admin[] }>('/admins'),
   createAdmin: (email: string, name: string, role: Admin['role'], password: string) =>

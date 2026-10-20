@@ -76,6 +76,8 @@ DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO app_service, app_adm
 GRANT USAGE ON SCHEMA public TO app_service;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_service;
 GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO app_service;
+-- The service AI is set by admins; the app server only reads it.
+REVOKE INSERT, UPDATE, DELETE ON public.service_ai FROM app_service;
 REVOKE ALL ON SCHEMA admin FROM PUBLIC, app_service;
 
 -- The admin server: its own schema, plus the account facts and counts it manages.
@@ -88,5 +90,6 @@ GRANT UPDATE (status) ON public.users TO app_admin;
 GRANT DELETE ON public.users TO app_admin;
 GRANT SELECT, DELETE ON public.sessions TO app_admin;
 GRANT INSERT ON public.password_resets TO app_admin;
-GRANT SELECT ON public.user_activity, public.ai_usage TO app_admin;
+GRANT SELECT ON public.user_activity, public.ai_usage, public.ai_calls TO app_admin;
+GRANT SELECT, UPDATE ON public.service_ai TO app_admin;
 `

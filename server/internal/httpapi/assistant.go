@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"box-scheduler/server/internal/ai"
+	"box-scheduler/server/internal/aigate"
 	"box-scheduler/server/internal/assistant"
 	"box-scheduler/server/internal/store"
 )
@@ -92,6 +93,10 @@ func (a *API) assistantPreview(w http.ResponseWriter, r *http.Request) {
 	}
 	reply, err := assist.Interpret(r.Context(), req)
 	if err != nil {
+		if errors.Is(err, aigate.ErrBusy) {
+			writeErrorCode(w, http.StatusServiceUnavailable, "ai_busy", err.Error())
+			return
+		}
 		if errors.Is(err, ai.ErrNotConfigured) {
 			writeError(w, http.StatusServiceUnavailable, "AI가 설정되지 않았어요. .env의 CLAUDE_CODE_OAUTH_TOKEN을 확인해 주세요.")
 			return
@@ -142,6 +147,10 @@ func (a *API) assistantTidy(w http.ResponseWriter, r *http.Request) {
 	}
 	text, err := tidier.Tidy(r.Context(), body.Text)
 	if err != nil {
+		if errors.Is(err, aigate.ErrBusy) {
+			writeErrorCode(w, http.StatusServiceUnavailable, "ai_busy", err.Error())
+			return
+		}
 		if errors.Is(err, ai.ErrNotConfigured) {
 			writeError(w, http.StatusServiceUnavailable, "AI가 설정되지 않았어요.")
 			return

@@ -70,140 +70,60 @@ function ConnectionRow({ c, onChanged }: { c: AIConnection; onChanged: () => voi
 }
 
 function AddConnection({ state, onAdded }: { state: AIState; onAdded: () => void }) {
-  const [kind, setKind] = useState<AIConnection['kind']>('anthropic')
   const [label, setLabel] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [model, setModel] = useState(state.anthropicModels[1] ?? '')
-  const [baseUrl, setBaseUrl] = useState('')
-  const [models, setModels] = useState<string[] | null>(null)
-  const [busy, setBusy] = useState<'models' | 'save' | null>(null)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const pick = (k: AIConnection['kind']) => {
-    setKind(k)
-    setError(null)
-    setModel(k === 'anthropic' ? (state.anthropicModels[1] ?? '') : '')
-  }
-
-  const loadModels = async () => {
-    setBusy('models')
-    setError(null)
-    try {
-      const r = await aiApi.models(baseUrl, apiKey)
-      setModels(r.models)
-      if (r.models.length && !r.models.includes(model)) setModel(r.models[0])
-      if (!r.models.length) setError('서버에 받아 둔 모델이 없어요. 예: ollama pull qwen3:14b')
-    } catch (e) {
-      setError((e as Error).message)
-    }
-    setBusy(null)
-  }
 
   const save = async (e: FormEvent) => {
     e.preventDefault()
-    setBusy('save')
+    setBusy(true)
     setError(null)
     try {
-      await aiApi.connect({ kind, label, model, apiKey: apiKey || undefined, baseUrl: kind === 'openai' ? baseUrl : undefined })
+      await aiApi.connect({ kind: 'anthropic', label, model, apiKey })
       setApiKey('')
       setLabel('')
       onAdded()
     } catch (err) {
       setError((err as Error).message)
     }
-    setBusy(null)
+    setBusy(false)
   }
 
   return (
     <form onSubmit={save} className="flex flex-col gap-3 rounded-xl border border-dashed border-line-strong p-3" aria-label="AI 연결 추가">
-      <div role="radiogroup" aria-label="연결 종류" className="flex rounded-[10px] bg-subtle p-[3px]">
-        {(
-          [
-            ['anthropic', 'Anthropic API 키'],
-            ['openai', '로컬 LLM (Ollama·LM Studio)'],
-          ] as const
-        ).map(([k, l]) => (
-          <button
-            key={k}
-            type="button"
-            role="radio"
-            aria-checked={kind === k}
-            onClick={() => pick(k)}
-            className={`h-9 flex-1 rounded-lg text-[13px] ${kind === k ? 'bg-surface font-semibold text-ink shadow-[0_1px_2px_rgba(21,23,28,0.08)]' : 'text-muted'}`}
-          >
-            {l}
-          </button>
-        ))}
-      </div>
-
-      {kind === 'anthropic' ? (
-        <>
-          <p className="text-xs leading-relaxed text-muted">
-            <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="font-semibold text-accent underline dark:text-accent-bright">
-              console.anthropic.com
-            </a>
-            에서 만든 키를 넣으세요. 사용한 만큼 내 Anthropic 계정으로 청구돼요. 키는 암호화해서 저장하고 다시 보여 주지 않아요.
-          </p>
-          <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
-            API 키
-            <input type="password" autoComplete="off" required placeholder="sk-ant-…" className={field} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
-            모델
-            <select className={field} value={model} onChange={(e) => setModel(e.target.value)}>
-              {state.anthropicModels.map((m) => (
-                <option key={m} value={m}>
-                  {MODEL_LABEL[m] ?? m}
-                </option>
-              ))}
-            </select>
-          </label>
-        </>
-      ) : (
-        <>
-          <p className="text-xs leading-relaxed text-muted">
-            Mac mini 같은 컴퓨터에서 돌리는 Ollama(기본 :11434)나 LM Studio(기본 :1234)의 주소를 넣으세요. 집 안 네트워크 주소는 서버 관리자가 허용해야 연결돼요.
-          </p>
-          <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
-            서버 주소
-            <input type="url" required placeholder="http://mac-mini.local:11434" className={field} value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} />
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
-            API 키 (있을 때만)
-            <input type="password" autoComplete="off" className={field} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-          </label>
-          <div className="flex items-end gap-2">
-            <label className="flex flex-1 flex-col gap-1.5 text-sm font-medium text-ink-2">
-              모델
-              {models && models.length > 0 ? (
-                <select className={field} value={model} onChange={(e) => setModel(e.target.value)}>
-                  {models.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input required placeholder="예: qwen3:14b" className={field} value={model} onChange={(e) => setModel(e.target.value)} />
-              )}
-            </label>
-            <button type="button" className={`${secondaryButton} h-11 shrink-0`} disabled={!baseUrl || busy !== null} onClick={() => void loadModels()}>
-              {busy === 'models' ? '불러오는 중…' : '모델 불러오기'}
-            </button>
-          </div>
-        </>
-      )}
+      <p className="text-xs leading-relaxed text-muted">
+        <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" className="font-semibold text-accent underline dark:text-accent-bright">
+          console.anthropic.com
+        </a>
+        에서 만든 키를 넣으세요. 사용한 만큼 내 Anthropic 계정으로 청구되고, 서비스 AI의 하루 한도와 상관없이 쓸 수 있어요. 키는 암호화해서 저장하고 다시 보여 주지 않아요.
+      </p>
+      <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
+        API 키
+        <input type="password" autoComplete="off" required placeholder="sk-ant-…" className={field} value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+      </label>
+      <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
+        모델
+        <select className={field} value={model} onChange={(e) => setModel(e.target.value)}>
+          {state.anthropicModels.map((m) => (
+            <option key={m} value={m}>
+              {MODEL_LABEL[m] ?? m}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
         이름 (선택)
-        <input maxLength={40} placeholder={kind === 'anthropic' ? 'Anthropic API' : '집 Mac mini'} className={field} value={label} onChange={(e) => setLabel(e.target.value)} />
+        <input maxLength={40} placeholder="Anthropic API" className={field} value={label} onChange={(e) => setLabel(e.target.value)} />
       </label>
       {error && (
         <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
           {error}
         </p>
       )}
-      <button className={`${primaryButton} h-11`} disabled={busy !== null || !model}>
-        {busy === 'save' ? '연결을 확인하는 중… (최대 1분)' : '확인하고 연결하기'}
+      <button className={`${primaryButton} h-11`} disabled={busy || !model}>
+        {busy ? '연결을 확인하는 중… (최대 1분)' : '확인하고 연결하기'}
       </button>
     </form>
   )
@@ -220,7 +140,7 @@ export function AIConnections() {
     try {
       const s = await aiApi.state()
       setState(s)
-      setAdding((a) => a || s.connections.length === 0)
+      setAdding((a) => a || (s.connections.length === 0 && !s.service.enabled && !s.serverAvailable))
     } catch (e) {
       setError((e as Error).message)
     }
@@ -231,8 +151,10 @@ export function AIConnections() {
 
   if (!state) return error ? <p className="text-sm text-danger">{error}</p> : null
 
-  const options = [
+  const svc = state.service
+  const options = (key: keyof AISettings) => [
     ...(state.serverAvailable ? [{ value: 'server', label: '서버 Claude 구독 (소유자)' }] : []),
+    ...(svc.enabled && svc.models[key] ? [{ value: 'service', label: `서비스 AI · ${svc.models[key]}` }] : []),
     ...state.connections.map((c) => ({ value: c.id, label: `${c.label} · ${c.model}` })),
     { value: '', label: '사용 안 함' },
   ]
@@ -250,6 +172,28 @@ export function AIConnections() {
 
   return (
     <div className="flex flex-col gap-4">
+      {svc.enabled ? (
+        <div className="flex flex-col gap-1.5 rounded-xl bg-subtle px-3.5 py-3 text-sm">
+          <span className="font-semibold">서비스 AI를 바로 쓸 수 있어요</span>
+          <span className="text-ink-2">
+            {svc.unlimited || svc.dailyLimit === 0 ? (
+              '하루 한도 없이 쓸 수 있어요.'
+            ) : (
+              <>
+                오늘 <b data-testid="service-used">{svc.usedToday}</b> / {svc.dailyLimit}회 사용 · 자정에 다시 채워져요.
+              </>
+            )}
+          </span>
+          {!svc.unlimited && svc.dailyLimit > 0 && (
+            <span className="h-1.5 rounded-full bg-line">
+              <span className="block h-1.5 rounded-full bg-accent-bright" style={{ width: `${Math.min(100, (svc.usedToday / svc.dailyLimit) * 100)}%` }} />
+            </span>
+          )}
+          <span className="text-xs text-muted">더 많이 쓰거나 더 큰 모델이 필요하면 아래에서 내 Anthropic API 키를 연결하세요.</span>
+        </div>
+      ) : (
+        !state.serverAvailable && <p className="rounded-xl bg-subtle px-3.5 py-3 text-sm text-ink-2">지금은 서비스 AI가 꺼져 있어요. 내 Anthropic API 키를 연결하면 AI 기능을 쓸 수 있어요.</p>
+      )}
       {!state.keysEnabled && <p className="text-sm text-danger">서버에 AI_SECRET_KEY가 설정되지 않아 API 키를 저장할 수 없어요.</p>}
       <div className="flex flex-col gap-2">
         <h3 className="text-sm font-semibold text-ink-2">기능별로 쓸 AI</h3>
@@ -260,7 +204,7 @@ export function AIConnections() {
               <span className="text-[11px] text-muted">{f.hint}</span>
             </span>
             <select aria-label={`${f.label}에 쓸 AI`} className={`${field} sm:flex-1`} value={state.settings[f.key]} onChange={(e) => void setFeature(f.key, e.target.value)}>
-              {options.map((o) => (
+              {options(f.key).map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
@@ -276,7 +220,7 @@ export function AIConnections() {
       </div>
 
       <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-semibold text-ink-2">내 AI 연결 {state.connections.length}</h3>
+        <h3 className="text-sm font-semibold text-ink-2">내 API 키 (선택) {state.connections.length}</h3>
         {state.connections.length > 0 && (
           <ul className="flex flex-col gap-2">
             {state.connections.map((c) => (
@@ -294,7 +238,7 @@ export function AIConnections() {
           />
         ) : (
           <button className={`${secondaryButton} h-11 self-start`} onClick={() => setAdding(true)}>
-            + AI 연결 추가
+            + 내 API 키 연결
           </button>
         )}
       </div>

@@ -17,6 +17,7 @@ import (
 
 	"box-scheduler/server/internal/adminstore"
 	"box-scheduler/server/internal/auth"
+	"box-scheduler/server/internal/secretbox"
 )
 
 const (
@@ -30,6 +31,8 @@ type Options struct {
 	CookieSecure bool
 	// ServiceURL is the app's public address, used in password reset links.
 	ServiceURL string
+	// SecretBox seals the service AI's key (shared AI_SECRET_KEY with the app server).
+	SecretBox *secretbox.Box
 	// LoginPerIP caps sign-in attempts per address per 15 minutes (0 = 30).
 	LoginPerIP int
 }
@@ -58,7 +61,7 @@ func NewRouter(s *adminstore.Store, opts Options) http.Handler {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(middleware.Timeout(2 * time.Minute)) // checking the service AI can take a while
 	r.Use(noStore)
 
 	r.Route("/api", func(r chi.Router) {
@@ -89,6 +92,7 @@ func NewRouter(s *adminstore.Store, opts Options) http.Handler {
 			r.Post("/users/{id}/reset-link", a.resetLink)
 			r.Post("/users/{id}/notes", a.addNote)
 			r.Get("/audit", a.audit)
+			r.Get("/service-ai", a.serviceAI)
 
 			r.Group(func(r chi.Router) {
 				r.Use(requireSuper)
@@ -96,6 +100,9 @@ func NewRouter(s *adminstore.Store, opts Options) http.Handler {
 				r.Post("/admins", a.createAdmin)
 				r.Patch("/admins/{id}", a.updateAdmin)
 				r.Post("/admins/{id}/reset", a.resetAdmin)
+				r.Put("/service-ai", a.saveServiceAI)
+				r.Post("/service-ai/test", a.testServiceAI)
+				r.Post("/service-ai/models", a.serviceModels)
 			})
 		})
 	})

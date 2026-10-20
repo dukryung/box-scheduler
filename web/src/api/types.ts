@@ -180,6 +180,8 @@ export interface AIState {
   connections: AIConnection[]
   settings: AISettings
   serverAvailable: boolean
+  /** The service's own AI (set up by admins): models per feature and today's use against the daily limit. */
+  service: { enabled: boolean; models: Record<'plan' | 'request' | 'tidy', string>; dailyLimit: number; usedToday: number; unlimited: boolean }
   anthropicModels: string[]
   keysEnabled: boolean
 }

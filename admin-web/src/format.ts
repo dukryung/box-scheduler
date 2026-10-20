@@ -45,6 +45,7 @@ export const ACTION_LABEL: Record<string, string> = {
   'admin-reset': '관리자 초기화',
   'admin-disable': '관리자 중지',
   'admin-enable': '관리자 사용',
+  'service-ai': '서비스 AI 설정',
   // From before the admin layer (app-account admins)
   role: '권한 변경',
   suspend: '사용자 정지',

@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"box-scheduler/server/internal/ai"
+	"box-scheduler/server/internal/aigate"
 	"box-scheduler/server/internal/scheduler"
 	"box-scheduler/server/internal/store"
 )
@@ -124,6 +125,10 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 	}
 	plan, err := planner.Plan(r.Context(), req)
 	if err != nil {
+		if errors.Is(err, aigate.ErrBusy) {
+			writeErrorCode(w, http.StatusServiceUnavailable, "ai_busy", err.Error())
+			return
+		}
 		if errors.Is(err, ai.ErrNotConfigured) {
 			writeError(w, http.StatusServiceUnavailable, "AI 제안이 설정되지 않았어요. .env의 CLAUDE_CODE_OAUTH_TOKEN을 확인해 주세요.")
 			return

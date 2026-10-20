@@ -379,10 +379,11 @@ type Note struct {
 
 type UserDetail struct {
 	User
-	Sessions   []UserSession  `json:"sessions"`
-	AIByFeat   map[string]int `json:"aiByFeature"`
-	ActiveDays int            `json:"activeDays30d"`
-	Notes      []Note         `json:"notes"`
+	Sessions     []UserSession  `json:"sessions"`
+	AIByFeat     map[string]int `json:"aiByFeature"`
+	ActiveDays   int            `json:"activeDays30d"`
+	ServiceToday int            `json:"serviceToday"`
+	Notes        []Note         `json:"notes"`
 }
 
 func (s *Store) UserDetail(ctx context.Context, id string) (UserDetail, error) {
@@ -426,6 +427,9 @@ func (s *Store) UserDetail(ctx context.Context, id string) (UserDetail, error) {
 	rows.Close()
 
 	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM public.user_activity WHERE user_id = $1 AND day > current_date - 30`, id).Scan(&d.ActiveDays); err != nil {
+		return UserDetail{}, err
+	}
+	if d.ServiceToday, err = s.ServiceCallsToday(ctx, id); err != nil {
 		return UserDetail{}, err
 	}
 

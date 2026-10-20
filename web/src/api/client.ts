@@ -104,7 +104,7 @@ export const aiApi = {
   test: (id: string) => request<{ ok: boolean; error: string }>(`/ai/connections/${id}/test`, { method: 'POST' }),
   remove: (id: string) => request<void>(`/ai/connections/${id}`, { method: 'DELETE' }),
   setSettings: (s: AISettings) => request<AISettings>('/ai/settings', { method: 'PUT', body: JSON.stringify(s) }),
-  models: (baseUrl: string, apiKey: string) => request<{ models: string[] }>('/ai/models', post({ baseUrl, apiKey })),
+  queue: () => request<{ running: number; waiting: number }>('/ai/queue'),
 }
 
 export const api = {
