@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -14,14 +13,11 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 
 	"box-scheduler/server/internal/ai"
 	"box-scheduler/server/internal/auth"
 	"box-scheduler/server/internal/httpapi"
 	"box-scheduler/server/internal/store"
-	"box-scheduler/server/migrations"
 )
 
 func main() {
@@ -46,10 +42,6 @@ func run() error {
 		return err
 	}
 	defer pool.Close()
-
-	if err := migrate(pool); err != nil {
-		return err
-	}
 
 	planner, provider, err := ai.NewFromEnv()
 	if err != nil {
@@ -110,17 +102,6 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
-}
-
-func migrate(pool *pgxpool.Pool) error {
-	db := stdlib.OpenDBFromPool(pool)
-	defer func(db *sql.DB) { _ = db.Close() }(db)
-
-	goose.SetBaseFS(migrations.FS)
-	if err := goose.SetDialect("postgres"); err != nil {
-		return err
-	}
-	return goose.Up(db, ".")
 }
 
 func atoiOr(s string) int {

@@ -5,7 +5,7 @@ import { Logo, TabDay, TabMonth, TabStats, TabTasks } from '../../components/ico
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { monthOf } from '../../lib/date'
 
-/** 'other' = a page outside the four views (설정, 사용자 관리); nothing is marked current. */
+/** 'other' = a page outside the four views (설정); nothing is marked current. */
 export type View = 'day' | 'month' | 'tasks' | 'stats' | 'other'
 
 interface Props {

@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation, useParams } from 'react-router'
 import { SettingsView } from './features/account/SettingsView'
-import { AdminView } from './features/admin/AdminView'
 import { LoginPage, ResetPage, SetupPage, SignupPage } from './features/auth/AuthPages'
 import { DayView } from './features/day/DayView'
 import { MonthView } from './features/month/MonthView'
@@ -58,7 +57,6 @@ export default function App() {
           <Route path="/tasks" element={<TasksView />} />
           <Route path="/stats" element={<StatsView />} />
           <Route path="/settings" element={<SettingsView />} />
-          <Route path="/admin" element={<AdminView />} />
           <Route path="*" element={<Navigate to={`/day/${todayISO()}`} replace />} />
         </Route>
       </Routes>

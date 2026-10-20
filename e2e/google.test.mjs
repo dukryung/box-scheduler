@@ -1,5 +1,5 @@
 // "Google로 계속하기": new accounts, returning sign-in, linking from 설정, and the refusals.
-import { BASE, call, checker, json, launch, watchErrors } from './lib.mjs'
+import { BASE, admin, call, checker, launch, removeUser, watchErrors } from './lib.mjs'
 import { startFakeGoogle } from './fake-google.mjs'
 
 const { check, failed } = checker()
@@ -37,7 +37,7 @@ try {
   await p.getByRole('link', { name: 'Google로 계속하기' }).click()
   await p.waitForURL('**/day/**')
   check((await me(p))?.id === gina.id, 'second Google sign-in → same account')
-  check((await json('GET', `/admin/users?q=gina-${tag}`)).users.length === 1, 'still one account')
+  check((await admin('GET', `/users?q=gina-${tag}`)).users.length === 1, 'still one account')
 
   // 3. A Google-only account can add a password, then unlink Google
   await p.goto(`${BASE}/settings`)
@@ -101,7 +101,7 @@ try {
   fake.next = { ...google('ursula'), verified: false }
   await r.getByRole('link', { name: 'Google로 계속하기' }).click()
   await r.getByText('Google에서 계정을 확인하지 못했어요').waitFor()
-  check((await json('GET', `/admin/users?q=ursula-${tag}`)).users.length === 0, 'unverified Google email refused')
+  check((await admin('GET', `/users?q=ursula-${tag}`)).users.length === 0, 'unverified Google email refused')
   await r.goto(`${BASE}/api/auth/google/callback?code=x&state=forged`)
   await r.getByText('Google 로그인이 만료됐어요').waitFor()
   check((await me(r)) === null, 'forged state refused')
@@ -127,12 +127,12 @@ try {
   await d.getByLabel('이메일 확인').fill(dora.email)
   await d.getByRole('button', { name: '계정 영구 삭제' }).click()
   await d.waitForURL('**/login')
-  check((await json('GET', `/admin/users?q=dora-${tag}`)).users.length === 0, 'Google-only account deleted with its email')
+  check((await admin('GET', `/users?q=dora-${tag}`)).users.length === 0, 'Google-only account deleted with its email')
   await d.close()
 
   check(errors.filter((e) => !e.includes('401')).length === 0, `no console errors ${errors.join(' | ')}`)
 } finally {
-  for (const id of cleanup) await json('DELETE', `/admin/users/${id}`).catch(() => {})
+  for (const id of cleanup) await removeUser(id).catch(() => {})
   await browser.close()
   fake.server.close()
 }

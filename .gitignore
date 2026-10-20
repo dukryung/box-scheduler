@@ -3,3 +3,4 @@ node_modules/
 dist/
 .DS_Store
 backups/
+.e2e-admin.json

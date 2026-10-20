@@ -1,0 +1,10 @@
+@import 'tailwindcss';
+@import '../../shared/theme.css';
+
+body {
+  margin: 0;
+  background: var(--app-ground);
+  color: var(--app-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}

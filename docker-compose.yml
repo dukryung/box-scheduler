@@ -15,10 +15,24 @@ services:
       timeout: 3s
       retries: 20
 
-  api:
-    build: ./server
+  # One-off step before the servers start: schema changes and the two login roles.
+  migrate:
+    build: { context: ./server, target: admin }
+    entrypoint: ["/usr/local/bin/migrate"]
     environment:
       DATABASE_URL: postgres://boxscheduler:${POSTGRES_PASSWORD:-boxscheduler}@db:5432/boxscheduler?sslmode=disable
+      SERVICE_DB_PASSWORD: ${SERVICE_DB_PASSWORD:-app-service-local}
+      ADMIN_DB_PASSWORD: ${ADMIN_DB_PASSWORD:-app-admin-local}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  # ---- the app (scales on its own) ----
+  api:
+    build: { context: ./server, target: service }
+    environment:
+      DATABASE_URL: postgres://app_service:${SERVICE_DB_PASSWORD:-app-service-local}@db:5432/boxscheduler?sslmode=disable
       PORT: "8080"
       # claude-cli (subscription token) | anthropic-api (API key) | fake | none
       AI_PROVIDER: ${AI_PROVIDER:-claude-cli}
@@ -40,17 +54,41 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:${API_PORT:-8080}:8080"
 
   web:
-    build: ./web
+    build: { context: ., dockerfile: web/Dockerfile }
     depends_on:
       - api
     ports:
       - "127.0.0.1:${WEB_PORT:-3080}:80"
+
+  # ---- the admin console (its own processes, ports and database role) ----
+  admin-api:
+    build: { context: ./server, target: admin }
+    environment:
+      DATABASE_URL: postgres://app_admin:${ADMIN_DB_PASSWORD:-app-admin-local}@db:5432/boxscheduler?sslmode=disable
+      PORT: "8090"
+      ADMIN_DB_MAX_CONNS: ${ADMIN_DB_MAX_CONNS:-5}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SERVICE_PUBLIC_URL: ${PUBLIC_URL:-http://localhost:${WEB_PORT:-3080}}
+      ADMIN_LOGIN_LIMIT_PER_IP: ${ADMIN_LOGIN_LIMIT_PER_IP:-}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${ADMIN_API_PORT:-8090}:8090"
+
+  admin-web:
+    build: { context: ., dockerfile: admin-web/Dockerfile }
+    depends_on:
+      - admin-api
+    # Not published beyond this machine until it sits behind a VPN or IP allowlist.
+    ports:
+      - "127.0.0.1:${ADMIN_WEB_PORT:-3090}:80"
 
 volumes:
   pgdata:

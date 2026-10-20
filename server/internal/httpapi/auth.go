@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -110,20 +111,24 @@ func (a *API) requireUser(next http.Handler) http.Handler {
 			writeError(w, http.StatusForbidden, "이용이 정지된 계정이에요")
 			return
 		}
+		a.markActive(r, u.ID)
 		ctx := context.WithValue(r.Context(), userKey, u)
 		ctx = context.WithValue(ctx, userIDKey, u.ID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func requireAdmin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if currentUser(r).Role != "admin" {
-			writeError(w, http.StatusForbidden, "어드민만 할 수 있어요")
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+func constantEq(a, b string) bool { return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1 }
+
+// markActive records the account's use once a day, for the admin dashboard.
+func (a *API) markActive(r *http.Request, userID string) {
+	today := time.Now().Format(dateLayout)
+	if prev, ok := a.active.Load(userID); ok && prev == today {
+		return
+	}
+	if err := a.store.MarkActive(r.Context(), userID); err == nil {
+		a.active.Store(userID, today)
+	}
 }
 
 // sameOrigin blocks cross-site writes: browsers mark them with Sec-Fetch-Site, and

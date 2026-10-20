@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router'
+import { useSearchParams } from 'react-router'
 import { authApi } from '../../api/client'
 import { card, primaryButton, secondaryButton } from '../../components/styles'
 import { ThemeToggle } from '../../components/ThemeToggle'
@@ -105,7 +105,6 @@ export function SettingsView() {
           aside={
             <span className="flex gap-1.5">
               {user.isOwner && <span className="rounded-md bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent-ink">소유자</span>}
-              {user.role === 'admin' && <span className="rounded-md bg-subtle px-2 py-0.5 text-xs font-semibold text-ink-2">어드민</span>}
             </span>
           }
         >
@@ -203,15 +202,6 @@ export function SettingsView() {
             <button className={`${primaryButton} h-11 self-start`}>{user.hasPassword ? '비밀번호 바꾸기' : '비밀번호 정하기'}</button>
           </form>
         </Section>
-
-        {user.role === 'admin' && (
-          <Link to="/admin" className={`${card} flex items-center justify-between p-5 text-[15px] font-semibold hover:bg-subtle`}>
-            사용자 관리 (어드민)
-            <span aria-hidden="true" className="text-muted">
-              →
-            </span>
-          </Link>
-        )}
 
         <div className="flex flex-wrap gap-2">
           <button onClick={() => void logout()} className={`${secondaryButton} h-11`}>

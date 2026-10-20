@@ -4,11 +4,25 @@
 
 ## 구성
 
+서비스(앱)와 관리자 콘솔은 서로 다른 프로세스·포트·DB 계정으로 돈다. 서비스에 트래픽이 몰려도 콘솔은 따로 살아 있고, 콘솔의 무거운 조회가 서비스를 느리게 하지 않는다.
+
 | 서비스 | 기술 | 포트 |
 |---|---|---|
-| `web` | React + Vite + TypeScript (nginx로 서빙, `/api` 프록시) | http://localhost:3080 |
-| `api` | Go (chi, pgx, goose) | http://localhost:8080 |
+| `web` | 앱 화면: React + Vite + TypeScript (nginx, `/api` → `api`) | http://localhost:3080 |
+| `api` | 앱 서버: Go (`cmd/api`), DB 계정 `app_service` | http://localhost:8080 |
+| `admin-web` | 관리자 콘솔 화면 (`admin-web/`, nginx, `/api` → `admin-api`) | http://localhost:3090 |
+| `admin-api` | 관리자 서버: Go (`cmd/admin`), DB 계정 `app_admin`, 연결 5개 | http://localhost:8090 |
+| `migrate` | 시작 전에 한 번: 마이그레이션 + DB 계정·권한 설정 (`cmd/migrate`) | – |
 | `db` | PostgreSQL 16 | localhost:5433 |
+
+```
+[사용자] → web :3080 → api :8080 ─┐
+                                   ├→ PostgreSQL (public: 앱 데이터 / admin: 관리자 계정·세션·기록)
+[관리자] → admin-web :3090 → admin-api :8090 ─┘
+```
+
+- `app_service`는 `admin` 스키마에 접근할 수 없다. `app_admin`은 일정·할 일 테이블과 비밀번호 해시를 읽을 수 없고, `admin.user_accounts`·`admin.user_counts` 뷰로 계정 정보와 개수만 본다. 상태 변경·세션 삭제·재설정 링크 발급·계정 삭제만 허용된다.
+- 테마 토큰은 두 화면이 `shared/theme.css`를 같이 쓴다.
 
 ## 실행
 
@@ -17,7 +31,7 @@ cp .env.example .env   # 필요 시 비밀번호 변경
 docker compose up -d --build
 ```
 
-DB 마이그레이션은 `api`가 시작할 때 자동으로 적용된다.
+`migrate`가 먼저 마이그레이션과 DB 계정(`SERVICE_DB_PASSWORD`, `ADMIN_DB_PASSWORD`, `.env`)을 적용한 뒤 `api`와 `admin-api`가 시작된다.
 
 ### AI 일정 제안 설정
 
@@ -65,20 +79,34 @@ Claude는 정해진 편집(블록 추가·이동·수정·삭제, Brain Dump 추
 ### 계정과 어드민
 
 - 누구나 이메일 + 비밀번호(8자 이상)로 가입하면 바로 쓸 수 있다. 비밀번호는 argon2id 해시로만 저장하고, 로그인은 서버 세션 쿠키(HttpOnly, SameSite=Lax, 30일)로 유지한다.
-- 계정을 넣기 전의 데이터는 **소유자 계정**으로 이어진다. 처음 실행하면 서버 로그에 한 번만 쓸 수 있는 설정 링크가 나온다: `docker compose logs api | grep setup`. 그 링크에서 이메일·비밀번호를 정하거나 "Google로 소유자 계정 만들기"를 누르면 소유자 겸 첫 어드민이 된다(서버를 다시 시작하면 링크가 바뀐다).
+- 앱 계정에는 관리자 권한이 없다. 관리는 아래 관리자 콘솔에서 따로 한다.
+- 계정을 넣기 전의 데이터는 **소유자 계정**으로 이어진다. 처음 실행하면 서버 로그에 한 번만 쓸 수 있는 설정 링크가 나온다: `docker compose logs api | grep setup`. 그 링크에서 이메일·비밀번호를 정하거나 "Google로 소유자 계정 만들기"를 누르면 소유자가 된다(서버를 다시 시작하면 링크가 바뀐다). 소유자는 서버의 Claude 구독으로 AI를 쓸 수 있는 앱 계정이다.
 - **Google 로그인**: `.env`에 `GOOGLE_CLIENT_ID`·`GOOGLE_CLIENT_SECRET`을 넣으면 로그인·가입·소유자 설정 화면에 "Google로 계속하기"가 나타난다(OpenID Connect, PKCE + state 쿠키 + nonce). 설정 방법:
   1. [Google Cloud Console](https://console.cloud.google.com/) → API 및 서비스 → OAuth 동의 화면(외부, 앱 이름·이메일) → 범위는 기본(`openid`, `email`, `profile`)만.
   2. 사용자 인증 정보 → OAuth 클라이언트 ID 만들기 → 웹 애플리케이션 → 승인된 리디렉션 URI에 `http://localhost:3080/api/auth/google/callback` (배포 후에는 `PUBLIC_URL/api/auth/google/callback`도) 추가.
   3. 나온 클라이언트 ID·보안 비밀을 `.env`에 넣고 `docker compose up -d api`.
   - Google 이메일이 기존 비밀번호 계정과 같으면 자동으로 합치지 않는다(가입 이메일은 인증되지 않았으므로). 비밀번호로 로그인한 뒤 설정 → 로그인 방법에서 Google을 연결한다. Google로만 가입한 계정은 설정에서 비밀번호를 추가할 수 있고, 비밀번호가 있어야 Google 연결을 끊을 수 있다.
-- 어드민(`/admin`): 사용자 검색, 정지·해제, 어드민 권한, 비밀번호 재설정 링크(24시간, 1회), 삭제, 관리 기록. 다른 사람의 일정·할 일 내용은 보이지 않고 개수만 보인다. 소유자 계정과 자기 계정은 여기서 바꿀 수 없다.
 - 로그인 시도는 이메일당 15분 10회, IP당 15분 60회(`LOGIN_LIMIT_PER_IP`), 가입은 IP당 1시간 10회(`SIGNUP_LIMIT_PER_IP`)로 제한한다. 다른 사이트에서 오는 쓰기 요청은 막는다(JSON 요청만 허용 + `Sec-Fetch-Site`).
 - HTTPS 뒤에서 운영할 때는 `COOKIE_SECURE=true`, 설정 링크 주소용으로 `PUBLIC_URL`을 지정한다.
 - AI 기능은 지금 소유자 계정만 서버의 Claude 구독으로 쓸 수 있다. 다른 계정은 다음 단계에서 본인 Anthropic API 키나 로컬 LLM을 연결해 쓰게 된다(구독 OAuth 토큰을 받아 쓰는 방식은 Anthropic 정책상 허용되지 않음).
 
+### 관리자 콘솔 (http://localhost:3090)
+
+- **관리자 계정은 화면에서 만들 수 없다.** 서버 명령으로만 만든다. 임시 비밀번호가 한 번 출력되고, 첫 로그인 때 12자 이상 새 비밀번호와 2단계 인증(TOTP: Google Authenticator, 1Password 등)을 설정해야 콘솔이 열린다.
+  ```sh
+  docker compose exec admin-api admin create --email you@example.com --name 이름 --role super
+  docker compose exec admin-api admin list
+  docker compose exec admin-api admin reset --email you@example.com     # 임시 비밀번호 재발급, 2단계 인증 초기화, 잠금 해제
+  docker compose exec admin-api admin disable --email …  /  enable --email …
+  ```
+- 역할: **최고 관리자**(`super`, 관리자 계정 관리까지) / **운영자**(`operator`, 사용자 관리). 최고 관리자는 한 명 이상 남아야 한다.
+- 화면: 대시보드(사용자·활동·가입·AI 사용, 30일 추이), 사용자(검색·필터·정렬·페이지), 사용자 상세(로그인 방법, 기기별 세션과 강제 로그아웃, 운영 메모, AI 사용, 정지·재설정 링크·삭제), 관리 기록(관리자 로그인 성공/실패 포함, IP), 관리자 계정(최고 관리자만).
+- 보안: 세션 쿠키 `bs_admin`(SameSite=Strict, 8시간, 30분 미사용 시 만료), 비밀번호 5회 실패 시 15분 잠금, 2단계 코드 재사용 거부, 삭제·권한 변경 같은 작업은 비밀번호 재확인, 응답 `no-store`, 화면 `noindex`·프레임 금지. 앱 쿠키로는 관리자 API를, 관리자 쿠키로는 앱 API를 쓸 수 없다.
+- 다른 사람의 일정·할 일 내용은 콘솔에서 보이지 않는다(DB 권한으로도 막혀 있음). 공개 배포 전까지 콘솔은 이 컴퓨터(127.0.0.1)에서만 열린다.
+
 ### 테스트 환경
 
-브라우저 테스트(`e2e/`)는 가짜 Google(`e2e/fake-google.mjs`)과 함께 실제 데이터와 분리된 compose 프로젝트(포트 3180/8180/5543, AI_PROVIDER=fake)에서만 실행한다. 스크립트는 다른 주소로는 실행을 거부한다.
+브라우저 테스트(`e2e/`)는 가짜 Google(`e2e/fake-google.mjs`)과 함께 실제 데이터와 분리된 compose 프로젝트(앱 3180/8180, 콘솔 3190/8190, DB 5543, AI_PROVIDER=fake)에서만 실행한다. 스크립트는 다른 주소로는 실행을 거부한다.
 
 ```sh
 cd e2e && npm install
@@ -106,7 +134,6 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | `/setup?token=…` | 첫 실행 때 소유자 계정 만들기 (서버 로그의 링크) |
 | `/reset?token=…` | 어드민이 발급한 링크로 비밀번호 다시 정하기 |
 | `/settings` | 내 계정, AI 연결, 화면 모드, 비밀번호, 로그아웃, 계정 삭제 |
-| `/admin` | 사용자 관리 (어드민만) |
 | `/` | 오늘 일간 화면으로 이동 (로그인 안 했으면 로그인으로) |
 
 ## 슬롯 규칙
@@ -128,9 +155,6 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | GET | `/api/auth/providers` | 켜진 로그인 방법 `{google}` |
 | GET | `/api/auth/google/start?next=&setup=&link=1` · `/api/auth/google/callback` | Google 로그인 시작(브라우저 이동) · Google에서 돌아오는 주소 |
 | POST | `/api/auth/google/unlink` | Google 연결 끊기 (비밀번호가 있을 때만) |
-| GET | `/api/admin/users?q=` · `/api/admin/stats` · `/api/admin/audit` | 사용자 목록(개수만) · 현황 · 관리 기록 (어드민) |
-| PATCH · DELETE | `/api/admin/users/{id}` | 권한·상태 변경 `{role?, status?}` · 계정 삭제 (어드민) |
-| POST | `/api/admin/users/{id}/reset-link` | 비밀번호 재설정 링크 발급 (어드민) |
 | GET | `/api/days/{date}` | 하루치 블록 + Brain Dump + 메모 |
 | PUT | `/api/days/{date}/note` | 하루 메모 저장 `{note}` |
 | GET | `/api/tasks` | 할 일 보관함 목록 (날짜 없는 항목, 여러 날에 걸친 배정·완료 시간 포함) |
@@ -152,3 +176,17 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | DELETE | `/api/brain-dump/{id}` | Brain Dump 삭제 |
 
 `/api/auth/signup`·`login`·`setup`·`reset`과 헬스 체크를 뺀 모든 API는 로그인이 필요하고, 데이터는 계정별로 나뉜다.
+
+### 관리자 API (`admin-api`, :8090 — 앱 서버에는 없음)
+
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/api/auth/login` · `/logout` | 관리자 로그인(다음 단계 `stage`: password · enroll · totp · ok) · 로그아웃 |
+| GET · POST | `/api/auth/me` · `/api/auth/password` | 내 정보 · 비밀번호 변경 |
+| POST | `/api/auth/totp/setup` · `/api/auth/totp/verify` | 2단계 인증 키 발급 · 코드 확인(설정 또는 로그인 완료) |
+| GET | `/api/dashboard` | 합계와 30일 추이 |
+| GET | `/api/users?q=&filter=&sort=&limit=&offset=` · `/api/users/{id}` | 사용자 목록 · 상세(세션, 메모, AI 사용) |
+| PATCH · DELETE | `/api/users/{id}` | 정지/해제 `{status}` · 삭제 `{password}` |
+| POST | `/api/users/{id}/sessions/revoke` · `/reset-link` · `/notes` | 강제 로그아웃 `{session?}` · 재설정 링크 · 메모 |
+| GET | `/api/audit?q=&action=&target=` | 관리 기록 |
+| GET · POST · PATCH | `/api/admins` · `/api/admins/{id}` · `/api/admins/{id}/reset` | 관리자 계정 (최고 관리자, 비밀번호 재확인) |

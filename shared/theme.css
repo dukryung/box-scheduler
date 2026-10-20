@@ -1,0 +1,113 @@
+/* Box Scheduler theme tokens, shared by the app (web/) and the admin console (admin-web/).
+   Import after tailwindcss. */
+/* Dark mode follows <html data-theme>, which index.html sets from the saved choice
+   (시스템/라이트/다크) before first paint; see lib/theme.ts. */
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+/* "Plex Planner": IBM Plex type, warm off-white ground, white cards, one orange
+   accent; violet is reserved for AI. Utilities read these tokens (bg-surface, text-muted, …).
+   accent is the deep orange that carries white text (4.6:1); accent-bright is the
+   lighter orange for marks without text (bars, rings, the logo). */
+@theme {
+  --font-sans: 'IBM Plex Sans KR', system-ui, -apple-system, 'Apple SD Gothic Neo', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  --color-ground: var(--app-ground);
+  --color-surface: var(--app-surface);
+  --color-subtle: var(--app-subtle);
+  --color-line: var(--app-line);
+  --color-line-strong: var(--app-line-strong);
+  --color-grid: var(--app-grid);
+  --color-ink: var(--app-ink);
+  --color-ink-2: var(--app-ink-2);
+  --color-muted: var(--app-muted);
+  --color-faint: var(--app-faint);
+  --color-accent: var(--app-accent);
+  --color-accent-bright: var(--app-accent-bright);
+  --color-accent-soft: var(--app-accent-soft);
+  --color-accent-ink: var(--app-accent-ink);
+  --color-ai: var(--app-ai);
+  --color-ai-soft: var(--app-ai-soft);
+  --color-ai-line: var(--app-ai-line);
+  --color-ai-ink: var(--app-ai-ink);
+  --color-good: var(--app-good);
+  --color-danger: var(--app-danger);
+}
+
+:root {
+  color-scheme: light;
+  --app-ground: #fcfaf7;
+  --app-surface: #ffffff;
+  --app-subtle: #f5f1ec;
+  --app-line: #ebe5de;
+  --app-line-strong: #dcd4cb;
+  --app-grid: #f1ece6;
+  --app-ink: #1c1917;
+  --app-ink-2: #44403c;
+  --app-muted: #6e6862;
+  --app-faint: #8c857e;
+  --app-accent: #d0470c;
+  --app-accent-bright: #f97316;
+  --app-accent-soft: #fff1e6;
+  --app-accent-ink: #9a3412;
+  --app-ai: #6d4aff;
+  --app-ai-soft: #f0ecff;
+  --app-ai-line: #cbbdff;
+  --app-ai-ink: #4527b8;
+  --app-good: #0b6b3a;
+  --app-danger: #b42318;
+
+  /* Chart tokens: one orange ramp, validated for light and dark surfaces
+     (planned = lighter step, done = darker step; seq-1..6 = hour heat strip). */
+  --viz-planned: #f59a5c;
+  --viz-done: #b23c0a;
+  --viz-track: #fde3cf;
+  --viz-seq-1: #fddcc0;
+  --viz-seq-2: #fbbe8e;
+  --viz-seq-3: #f8995a;
+  --viz-seq-4: #ee7630;
+  --viz-seq-5: #d2560f;
+  --viz-seq-6: #a8420a;
+  --viz-grid: #ebe5de;
+  --viz-axis: #d1c8be;
+  --viz-muted: #8c857e;
+  --viz-hover: rgba(28, 25, 23, 0.04);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --app-ground: #12100e;
+  --app-surface: #1c1a18;
+  --app-subtle: #272421;
+  --app-line: #2f2b27;
+  --app-line-strong: #403a34;
+  --app-grid: #26231f;
+  --app-ink: #f5f1ec;
+  --app-ink-2: #d6cfc7;
+  --app-muted: #a39b92;
+  --app-faint: #857d75;
+  --app-accent: #d0470c;
+  --app-accent-bright: #fb8c4a;
+  --app-accent-soft: #3a2416;
+  --app-accent-ink: #ffc9a3;
+  --app-ai: #7c5cff;
+  --app-ai-soft: #241e40;
+  --app-ai-line: #4a3d8a;
+  --app-ai-ink: #cfc3ff;
+  --app-good: #4ade80;
+  --app-danger: #f97066;
+
+  --viz-planned: #9a3d12;
+  --viz-done: #fb8c4a;
+  --viz-track: #3a2416;
+  --viz-seq-1: #4a2310;
+  --viz-seq-2: #6e3112;
+  --viz-seq-3: #94410f;
+  --viz-seq-4: #c2560f;
+  --viz-seq-5: #ee7630;
+  --viz-seq-6: #fba36a;
+  --viz-grid: #2f2b27;
+  --viz-axis: #403a34;
+  --viz-muted: #857d75;
+  --viz-hover: rgba(255, 255, 255, 0.06);
+}

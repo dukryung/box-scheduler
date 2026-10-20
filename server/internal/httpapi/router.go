@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -45,6 +46,9 @@ type API struct {
 	loginLimit   *auth.Limiter // per email (reset on success) and per account
 	loginIPLimit *auth.Limiter
 	signupLimit  *auth.Limiter
+
+	// active remembers who was already marked active today ("userID" → "YYYY-MM-DD").
+	active sync.Map
 }
 
 func orDefault(n, d int) int {
@@ -119,16 +123,6 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 			r.Delete("/auth/me", a.deleteMe)
 			r.Post("/auth/password", a.changePassword)
 			r.Post("/auth/google/unlink", a.googleUnlink)
-
-			r.Route("/admin", func(r chi.Router) {
-				r.Use(requireAdmin)
-				r.Get("/users", a.adminUsers)
-				r.Get("/stats", a.adminStats)
-				r.Get("/audit", a.adminAudit)
-				r.Patch("/users/{id}", a.adminUpdateUser)
-				r.Delete("/users/{id}", a.adminDeleteUser)
-				r.Post("/users/{id}/reset-link", a.adminResetLink)
-			})
 		})
 	})
 	return r

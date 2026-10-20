@@ -8,5 +8,7 @@ export default defineConfig({
   server: {
     // In dev, forward API calls to the Go server (docker compose exposes it on 8080).
     proxy: { '/api': 'http://localhost:8080' },
+    // The theme tokens live in ../shared, next to the admin console.
+    fs: { allow: ['..'] },
   },
 })

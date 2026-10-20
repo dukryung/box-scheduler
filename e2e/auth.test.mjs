@@ -1,5 +1,5 @@
-// Accounts: sign-up, log-in, isolation between accounts, owner-only AI, and the admin page.
-import { BASE, OWNER, call, checker, json, launch, watchErrors } from './lib.mjs'
+// Accounts: sign-up, log-in, isolation between accounts, owner-only AI, and what admins' actions do to them.
+import { BASE, OWNER, admin, call, checker, json, launch, removeUser, watchErrors } from './lib.mjs'
 
 const { check, failed } = checker()
 const errors = []
@@ -13,7 +13,7 @@ const cleanup = []
 try {
   // 1. API: sign-up signs in; bad input and duplicates are refused
   const a = await call('POST', '/auth/signup', alice)
-  check(a.status === 201 && a.cookie && a.body.role === 'user' && !a.body.isOwner, 'sign-up creates a normal account and signs in')
+  check(a.status === 201 && a.cookie && !a.body.isOwner && !('role' in a.body), 'sign-up creates a normal account and signs in')
   cleanup.push(a.body.id)
   check((await call('POST', '/auth/signup', { ...alice, email: alice.email.toUpperCase() })).status === 409, 'same email (any case) refused')
   check((await call('POST', '/auth/signup', { email: 'not-an-email', password: 'long-enough' })).status === 400, 'bad email refused')
@@ -55,28 +55,27 @@ try {
   check(ai.status === 403 && ai.body.code === 'ai_not_connected', 'non-owner AI call refused with ai_not_connected')
   check((await json('POST', '/assistant/tidy', { text: '음 회의 완료' })).text === '회의 완료', 'owner can use AI')
 
-  // 6. Admin API: only admins; owner and self are protected
-  check((await call('GET', '/admin/users', null, a.cookie)).status === 403, 'non-admin cannot open the admin API')
-  const list = await json('GET', `/admin/users?q=${tag}`)
-  check(list.users.length === 2 && list.users.every((u) => !('passwordHash' in u)), 'admin lists accounts (no password data)')
-  const owner = (await json('GET', '/admin/users?q=owner@e2e.test')).users[0]
-  check((await call('PATCH', `/admin/users/${owner.id}`, { status: 'suspended' }, (await ownerCookie()))).status === 400, 'owner account cannot be suspended')
-  await json('PATCH', `/admin/users/${b.body.id}`, { status: 'suspended' })
+  // 6. The app server has no admin API at all; admin actions come from the admin server
+  check((await call('GET', '/admin/users', null, a.cookie)).status === 404 && String(await json('GET', '/admin/users')).includes('404'), 'no /api/admin on the app server, even for the owner')
+  const owner = (await admin('GET', '/users?q=owner@e2e.test')).users[0]
+  check((await admin('PATCH', `/users/${owner.id}`, { status: 'suspended' })).error?.includes('소유자'), 'owner account cannot be suspended')
+  await admin('PATCH', `/users/${b.body.id}`, { status: 'suspended' })
   check((await call('GET', '/auth/me', null, b.cookie)).status === 401, 'suspending signs the account out')
   check((await call('POST', '/auth/login', bob)).status === 403, 'suspended account cannot log in')
-  await json('PATCH', `/admin/users/${b.body.id}`, { status: 'active' })
+  await admin('PATCH', `/users/${b.body.id}`, { status: 'active' })
   check((await call('POST', '/auth/login', bob)).status === 200, 'restored account can log in')
 
   // 7. Reset link: one use, signs out elsewhere
-  const link = await json('POST', `/admin/users/${a.body.id}/reset-link`)
-  const token = new URL(link.path, BASE).searchParams.get('token')
+  const link = await admin('POST', `/users/${a.body.id}/reset-link`)
+  check(link.url.startsWith(`${BASE}/reset?token=`), 'reset link points at the app')
+  const token = new URL(link.url).searchParams.get('token')
   const r1 = await call('POST', '/auth/reset', { token, password: 'alice-new-pass' })
   check(r1.status === 200 && r1.cookie, 'reset link sets a new password and signs in')
   check((await call('GET', '/auth/me', null, a.cookie)).status === 401, 'older sessions signed out after reset')
   check((await call('POST', '/auth/reset', { token, password: 'again-pass-1' })).status === 400, 'reset link works only once')
   check((await call('POST', '/auth/login', { email: alice.email, password: 'alice-new-pass' })).status === 200, 'new password works')
-  const audit = await json('GET', '/admin/audit')
-  check(['suspend', 'restore', 'reset-link'].every((x) => audit.entries.some((e) => e.action === x && e.target)), 'admin actions are recorded')
+  const audit = await admin('GET', `/audit?target=${b.body.id}`)
+  check(['user-suspend', 'user-restore'].every((x) => audit.entries.some((e) => e.action === x && e.target === bob.email)), 'admin actions are recorded')
 
   // 8. Setup cannot be repeated
   check((await call('POST', '/auth/setup', { token: 'e2e-setup-token', ...OWNER })).status !== 200, 'owner setup works only once')
@@ -99,9 +98,9 @@ try {
   await out.getByRole('link', { name: /계정 설정/ }).click()
   await out.getByRole('heading', { name: '설정' }).waitFor()
   check(await out.getByText(bob.email).isVisible(), 'settings shows the email')
-  check((await out.getByRole('link', { name: '사용자 관리 (어드민)' }).count()) === 0, 'no admin link for a normal user')
   await out.goto(`${BASE}/admin`)
-  check(await out.getByText('어드민만 볼 수 있어요').isVisible(), 'admin page closed to a normal user')
+  await out.waitForURL('**/day/**')
+  check(true, 'the app has no /admin page (it goes to today)')
   await out.goto(`${BASE}/settings`)
   await out.getByRole('button', { name: '로그아웃' }).click()
   await out.waitForURL('**/login')
@@ -116,44 +115,14 @@ try {
   await out.getByRole('button', { name: '가입하기' }).click()
   await out.waitForURL('**/day/**')
   check(await out.locator('[title="12:00"]').isVisible(), 'sign-up lands on today’s timetable')
-  const carolId = (await json('GET', `/admin/users?q=carol-${tag}`)).users[0]?.id
+  const carolId = (await admin('GET', `/users?q=carol-${tag}`)).users[0]?.id
   if (carolId) cleanup.push(carolId)
   await out.close()
 
-  // 11. Browser: admin page for the owner
-  const admin = await browser.newPage({ viewport: { width: 1440, height: 900 } })
-  watchErrors(admin, errors)
-  await admin.goto(`${BASE}/admin`)
-  await admin.getByRole('heading', { name: '사용자 관리' }).waitFor()
-  await admin.getByLabel('검색').fill(tag)
-  await admin.getByRole('listitem', { name: bob.email }).waitFor()
-  const bobRow = admin.getByRole('listitem', { name: bob.email })
-  check((await admin.getByRole('region', { name: '사용자 목록' }).getByRole('listitem').count()) === 3, 'search narrows the list')
-  check(!(await admin.content()).includes('앨리스 회의'), "no one's schedule contents on the admin page")
-  await bobRow.getByRole('button', { name: '정지', exact: true }).click()
-  await bobRow.getByText('정지됨').waitFor()
-  check(true, 'suspend from the page')
-  await bobRow.getByRole('button', { name: '정지 해제' }).click()
-  await bobRow.getByRole('button', { name: '비밀번호 재설정 링크' }).click()
-  const shown = await bobRow.getByLabel('재설정 링크').inputValue()
-  check(shown.startsWith(`${BASE}/reset?token=`), 'reset link shown to copy')
-  await bobRow.getByRole('button', { name: '삭제' }).click()
-  await bobRow.getByRole('alertdialog').getByRole('button', { name: '삭제' }).click()
-  await admin.getByRole('listitem', { name: bob.email }).waitFor({ state: 'detached' })
-  check((await call('POST', '/auth/login', bob)).status === 401, 'deleted account is gone')
-  check(await admin.getByText('삭제').first().isVisible(), 'audit list shows the delete')
-  const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
-  await phone.goto(`${BASE}/admin`)
-  await phone.getByRole('heading', { name: '사용자 관리' }).waitFor()
-  check(await phone.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'phone: admin page has no sideways scroll')
-
   check(errors.filter((e) => !e.includes('401') && !e.includes('403')).length === 0, `no console errors ${errors.join(' | ')}`)
 } finally {
-  for (const id of cleanup) await json('DELETE', `/admin/users/${id}`).catch(() => {})
+  for (const id of cleanup) await removeUser(id).catch(() => {})
   await browser.close()
 }
 process.exit(failed() ? 1 : 0)
 
-async function ownerCookie() {
-  return (await call('POST', '/auth/login', { email: OWNER.email, password: OWNER.password })).cookie
-}

@@ -1,8 +1,5 @@
 import type {
-  AdminStats,
-  AdminUser,
   AssistantOp,
-  AuditEntry,
   AssistantPreview,
   AssistantTurn,
   BacklogItem,
@@ -44,7 +41,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({}))
     const signedOut = res.status === 401 || (res.status === 403 && body.error === '이용이 정지된 계정이에요')
     if (signedOut && !path.startsWith('/auth/')) onSignedOut()
-    if (res.status === 409 && !path.startsWith('/auth/') && !path.startsWith('/admin/')) throw new ApiError(409, OVERLAP_MESSAGE)
+    if (res.status === 409 && !path.startsWith('/auth/')) throw new ApiError(409, OVERLAP_MESSAGE)
     throw new ApiError(res.status, body.error ?? `HTTP ${res.status}`, body.code)
   }
   return (res.status === 204 ? undefined : res.json()) as Promise<T>
@@ -95,16 +92,6 @@ export const authApi = {
     if (params.link) q.set('link', '1')
     return `/api/auth/google/start?${q}`
   },
-}
-
-export const adminApi = {
-  users: (q: string) => request<{ users: AdminUser[] }>(`/admin/users?q=${encodeURIComponent(q)}`),
-  stats: () => request<AdminStats>('/admin/stats'),
-  audit: () => request<{ entries: AuditEntry[] }>('/admin/audit'),
-  update: (id: string, patch: { role?: User['role']; status?: User['status'] }) =>
-    request<User>(`/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }),
-  remove: (id: string) => request<void>(`/admin/users/${id}`, { method: 'DELETE' }),
-  resetLink: (id: string) => request<{ path: string; expiresIn: string }>(`/admin/users/${id}/reset-link`, { method: 'POST' }),
 }
 
 export const api = {
