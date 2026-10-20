@@ -65,6 +65,20 @@ function useSubmit(run: () => Promise<User>) {
   return { busy, error, onSubmit }
 }
 
+/** Before the owner has claimed the existing data, signing up would start an empty account. */
+function OwnerSetupHint() {
+  const [needed, setNeeded] = useState(false)
+  useEffect(() => {
+    authApi.setupNeeded().then((r) => setNeeded(r.needed), () => {})
+  }, [])
+  if (!needed) return null
+  return (
+    <p role="note" className="rounded-lg bg-accent-soft px-3 py-2.5 text-sm leading-relaxed text-accent-ink">
+      아직 소유자 계정이 없어요. 기존 일정을 이어서 쓰려면 먼저 서버 로그에 나온 설정 링크(<code>/setup?token=…</code>)로 소유자 계정을 만들어 주세요.
+    </p>
+  )
+}
+
 const ErrorText = ({ error }: { error: string | null }) =>
   error ? (
     <p role="alert" className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">
@@ -93,6 +107,7 @@ export function LoginPage() {
       }
     >
       {params.get('expired') && <p className="text-sm text-muted">로그인이 끝났어요. 다시 로그인해 주세요.</p>}
+      <OwnerSetupHint />
       <ErrorText error={linkError} />
       {google && (
         <>
@@ -132,6 +147,7 @@ export function SignupPage() {
         </>
       }
     >
+      <OwnerSetupHint />
       {google && (
         <>
           <GoogleButton href={authApi.googleStartURL({})} label="Google로 가입하기" />

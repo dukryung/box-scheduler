@@ -19,6 +19,7 @@ const ACTION_LABEL: Record<string, string> = {
   restore: '정지 해제',
   delete: '삭제',
   'reset-link': '재설정 링크 발급',
+  'owner-move': '소유자 데이터 이전',
 }
 
 function Tile({ label, value }: { label: string; value: number | string }) {
