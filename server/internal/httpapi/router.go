@@ -13,6 +13,8 @@ import (
 
 	"box-scheduler/server/internal/ai"
 	"box-scheduler/server/internal/auth"
+	"box-scheduler/server/internal/netguard"
+	"box-scheduler/server/internal/secretbox"
 	"box-scheduler/server/internal/store"
 )
 
@@ -33,6 +35,10 @@ type Options struct {
 	CookieSecure bool
 	// Google is the "Google로 계속하기" client; nil or without credentials hides it.
 	Google *auth.Google
+	// SecretBox seals accounts' API keys (nil: keys cannot be saved).
+	SecretBox *secretbox.Box
+	// NetPolicy decides which internal addresses local LLM connections may reach.
+	NetPolicy netguard.Policy
 	// Per-IP limits: log-in attempts per 15 minutes and sign-ups per hour (0 = default).
 	LoginPerIP  int
 	SignupPerIP int
@@ -46,6 +52,8 @@ type API struct {
 	loginLimit   *auth.Limiter // per email (reset on success) and per account
 	loginIPLimit *auth.Limiter
 	signupLimit  *auth.Limiter
+
+	aiHTTP *http.Client // guarded client for accounts' local LLMs
 
 	// active remembers who was already marked active today ("userID" → "YYYY-MM-DD").
 	active sync.Map
@@ -64,6 +72,7 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 		loginLimit:   &auth.Limiter{Max: 10, Window: 15 * time.Minute},
 		loginIPLimit: &auth.Limiter{Max: orDefault(opts.LoginPerIP, 60), Window: 15 * time.Minute},
 		signupLimit:  &auth.Limiter{Max: orDefault(opts.SignupPerIP, 10), Window: time.Hour},
+		aiHTTP:       opts.NetPolicy.Client(aiCallTime),
 	}
 
 	r := chi.NewRouter()
@@ -94,7 +103,7 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(sameOrigin)
 			r.Use(a.requireUser)
-			r.Use(timeoutExcept(30*time.Second, "/ai-suggest", "/assistant/preview", "/assistant/tidy"))
+			r.Use(timeoutExcept(30*time.Second, "/ai-suggest", "/assistant/preview", "/assistant/tidy", "/ai/connections", "/test", "/ai/models"))
 
 			r.Get("/days/{date}", a.getDay)
 			r.Put("/days/{date}/note", a.putDayNote)
@@ -123,6 +132,13 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 			r.Delete("/auth/me", a.deleteMe)
 			r.Post("/auth/password", a.changePassword)
 			r.Post("/auth/google/unlink", a.googleUnlink)
+
+			r.Get("/ai", a.aiState)
+			r.Post("/ai/connections", a.createAIConnection)
+			r.Post("/ai/connections/{id}/test", a.testAIConnection)
+			r.Delete("/ai/connections/{id}", a.deleteAIConnection)
+			r.Put("/ai/settings", a.putAISettings)
+			r.Post("/ai/models", a.listModels)
 		})
 	})
 	return r

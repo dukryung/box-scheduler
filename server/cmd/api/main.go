@@ -17,6 +17,8 @@ import (
 	"box-scheduler/server/internal/ai"
 	"box-scheduler/server/internal/auth"
 	"box-scheduler/server/internal/httpapi"
+	"box-scheduler/server/internal/netguard"
+	"box-scheduler/server/internal/secretbox"
 	"box-scheduler/server/internal/store"
 )
 
@@ -63,6 +65,11 @@ func run() error {
 			TokenURL:     envOr("GOOGLE_TOKEN_URL", "https://oauth2.googleapis.com/token"),
 		},
 	}
+	if opts.SecretBox, err = secretbox.New(os.Getenv("AI_SECRET_KEY")); err != nil {
+		return err
+	}
+	opts.NetPolicy = netguard.Parse(os.Getenv("AI_ALLOW_PRIVATE"))
+	slog.Info("ai connections", "keys", opts.SecretBox != nil, "allow_private", os.Getenv("AI_ALLOW_PRIVATE"))
 	slog.Info("google sign-in", "enabled", opts.Google.Enabled(), "redirect", opts.Google.RedirectURL)
 	needsSetup, err := st.OwnerNeedsSetup(ctx)
 	if err != nil {

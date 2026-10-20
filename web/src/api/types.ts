@@ -155,3 +155,31 @@ export interface User {
   /** A Google account is linked. */
   google: boolean
 }
+
+/** One of the account's own AIs; the key itself never comes back, only its last characters. */
+export interface AIConnection {
+  id: string
+  kind: 'anthropic' | 'openai'
+  label: string
+  baseUrl: string | null
+  model: string
+  keyHint: string
+  createdAt: string
+  checkedAt: string | null
+  lastError: string
+}
+
+/** Which AI each feature uses: 'server' (owner's subscription), a connection id, or '' (none). */
+export interface AISettings {
+  plan: string
+  request: string
+  tidy: string
+}
+
+export interface AIState {
+  connections: AIConnection[]
+  settings: AISettings
+  serverAvailable: boolean
+  anthropicModels: string[]
+  keysEnabled: boolean
+}

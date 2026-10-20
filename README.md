@@ -88,7 +88,15 @@ Claude는 정해진 편집(블록 추가·이동·수정·삭제, Brain Dump 추
   - Google 이메일이 기존 비밀번호 계정과 같으면 자동으로 합치지 않는다(가입 이메일은 인증되지 않았으므로). 비밀번호로 로그인한 뒤 설정 → 로그인 방법에서 Google을 연결한다. Google로만 가입한 계정은 설정에서 비밀번호를 추가할 수 있고, 비밀번호가 있어야 Google 연결을 끊을 수 있다.
 - 로그인 시도는 이메일당 15분 10회, IP당 15분 60회(`LOGIN_LIMIT_PER_IP`), 가입은 IP당 1시간 10회(`SIGNUP_LIMIT_PER_IP`)로 제한한다. 다른 사이트에서 오는 쓰기 요청은 막는다(JSON 요청만 허용 + `Sec-Fetch-Site`).
 - HTTPS 뒤에서 운영할 때는 `COOKIE_SECURE=true`, 설정 링크 주소용으로 `PUBLIC_URL`을 지정한다.
-- AI 기능은 지금 소유자 계정만 서버의 Claude 구독으로 쓸 수 있다. 다른 계정은 다음 단계에서 본인 Anthropic API 키나 로컬 LLM을 연결해 쓰게 된다(구독 OAuth 토큰을 받아 쓰는 방식은 Anthropic 정책상 허용되지 않음).
+- AI 기능은 계정마다 **내 AI**를 연결해 쓴다(아래). 소유자 계정은 서버의 Claude 구독도 고를 수 있다. 다른 사람의 구독 OAuth 토큰을 받아 쓰는 방식은 Anthropic 정책상 허용되지 않아 지원하지 않는다.
+
+### 내 AI 연결 (설정 → AI 연결)
+
+- **Anthropic API 키**: console.anthropic.com에서 만든 키 + 모델(Opus 5.5 / Sonnet 5.5 / Haiku 5.5). 비용은 그 계정으로 청구된다. 음성 정리는 이 키로 Haiku를 쓴다.
+- **로컬 LLM**: OpenAI 호환 서버(Ollama `:11434`, LM Studio `:1234`) 주소 + 모델("모델 불러오기"로 목록에서 선택). 출력은 JSON 스키마로 강제하고, 지원하지 않는 서버는 JSON 모드로 다시 요청한다.
+- 저장하기 전에 짧은 요청으로 연결을 확인한다. 기능별로(AI로 시간 정하기 · 말로 요청하기 · 음성 정리) 쓸 AI를 고르며, 처음 연결한 AI가 모든 기능에 기본으로 들어간다.
+- 키는 `AI_SECRET_KEY`(64자리 hex, `openssl rand -hex 32`)로 AES-256-GCM 암호화해 저장하고, 화면·API·관리자 콘솔 어디에도 다시 나오지 않는다(끝 4자리만).
+- 로컬 LLM 주소는 서버 내부망을 찌르지 못하게 루프백·사설·링크로컬(클라우드 메타데이터)·CGNAT 주소를 막고, DNS 조회 뒤 실제로 붙는 IP를 다시 확인하며 리디렉션은 따라가지 않는다. 집 네트워크의 Mac mini를 쓰려면 `.env`에 허용 목록을 넣는다: `AI_ALLOW_PRIVATE=192.168.0.0/16` 또는 `AI_ALLOW_PRIVATE=mac-mini.local`. 서버를 클라우드에 올리면 Tailscale·Cloudflare Tunnel 같은 주소를 쓴다.
 
 ### 관리자 콘솔 (http://localhost:3090)
 
@@ -163,6 +171,10 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | POST | `/api/days/{date}/carry-over` | 그날의 미완료(open) Brain Dump 항목을 `{to}` 날짜로 복사, 원본은 `carried` 처리 |
 | POST | `/api/days/{date}/ai-suggest` | AI 일정 제안 `{fromSlot, toSlot}` (저장하지 않음) |
 | POST | `/api/days/{date}/ai-apply` | 수락한 제안 블록 일괄 저장 (겹치면 전체 409) |
+| GET | `/api/ai` | 내 AI 연결 목록(키 제외), 기능별 선택, 고를 수 있는 모델 |
+| POST · DELETE | `/api/ai/connections` · `/api/ai/connections/{id}` | 연결 추가(확인 후 저장) `{kind: anthropic\|openai, model, apiKey?, baseUrl?, label?}` · 삭제 |
+| POST | `/api/ai/connections/{id}/test` · `/api/ai/models` | 연결 다시 확인 · 로컬 서버의 모델 목록 `{baseUrl, apiKey?}` |
+| PUT | `/api/ai/settings` | 기능별 AI `{plan, request, tidy}` (`server`(소유자만) · 연결 id · `''`) |
 | POST | `/api/assistant/tidy` | 받아 적은 음성을 짧은 요청 문장으로 정리해 돌려줌 (보내기·저장 안 함) |
 | POST | `/api/assistant/preview` | 말로 한 요청을 Claude가 편집 목록으로 바꾸고, 서버가 겹침을 검사해 미리보기로 돌려줌 (저장 안 함) |
 | POST | `/api/assistant/apply` | 미리본 편집을 한 번에 적용하고 되돌리기용 편집 목록을 반환 (겹치면 전체 409) |

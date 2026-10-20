@@ -3,6 +3,7 @@ import { Close, Sparkle } from '../../components/icons'
 import { aiButton, aiOutlineButton } from '../../components/styles'
 import { SLOTS_PER_DAY, formatDuration, slotToTime } from '../../lib/slots'
 import type { AISuggestionState } from './useAISuggestion'
+import { AIError } from '../../components/AIError'
 
 const STEP = 3 // 30-minute choices
 const DEFAULT_FROM = 54 // 09:00
@@ -92,11 +93,7 @@ export function AIPanel({ ai, nowSlot, onClose, onApplied }: Props) {
           </button>
         </div>
       )}
-      {error && (
-        <p role="alert" className="rounded-xl bg-danger/10 px-3.5 py-3 text-sm text-danger">
-          {error}
-        </p>
-      )}
+      {error && <AIError error={error} />}
 
       {suggestion && (
         <>

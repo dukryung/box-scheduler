@@ -40,6 +40,11 @@ services:
       AI_TIDY_MODEL: ${AI_TIDY_MODEL:-claude-haiku-5-5}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Accounts' own AI: AI_SECRET_KEY seals their API keys (64 hex chars); AI_ALLOW_PRIVATE lists
+      # internal hosts/CIDRs their local LLM may be on (e.g. "192.168.0.0/16,mac-mini.local").
+      AI_SECRET_KEY: ${AI_SECRET_KEY:-}
+      AI_ALLOW_PRIVATE: ${AI_ALLOW_PRIVATE:-}
+      AI_ANTHROPIC_BASE_URL: ${AI_ANTHROPIC_BASE_URL:-}
       # Accounts: set COOKIE_SECURE=true behind HTTPS; PUBLIC_URL is used in the owner setup link.
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:${WEB_PORT:-3080}}

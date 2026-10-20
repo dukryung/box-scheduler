@@ -8,6 +8,7 @@ import { useAuth } from '../../store/authStore'
 import { useGoogleEnabled } from '../auth/google'
 import { GoogleButton } from '../auth/GoogleButton'
 import { BottomTabs, TopBar, ViewSwitch } from '../nav/ViewSwitch'
+import { AIConnections } from './AIConnections'
 
 const field = 'h-11 w-full rounded-[10px] border border-line-strong bg-surface px-3.5 text-[15px] text-ink outline-none focus:border-accent md:text-sm'
 
@@ -125,14 +126,7 @@ export function SettingsView() {
         </Section>
 
         <Section title="AI 연결">
-          {user.isOwner ? (
-            <p className="text-sm leading-relaxed text-ink-2">이 서버에 설정된 Claude 구독으로 AI 기능을 쓰고 있어요. 소유자 계정에서만 쓸 수 있어요.</p>
-          ) : (
-            <p className="text-sm leading-relaxed text-ink-2">
-              AI 기능(AI로 시간 정하기, 말로 요청하기)은 내 Anthropic API 키나 내 로컬 LLM을 연결하면 쓸 수 있어요. 연결 기능은 곧 추가돼요. 다른 기능은 지금 모두 쓸 수
-              있어요.
-            </p>
-          )}
+          <AIConnections />
         </Section>
 
         <Section title="화면 모드" aside={<ThemeToggle />}>

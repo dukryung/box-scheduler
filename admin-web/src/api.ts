@@ -28,6 +28,8 @@ export interface User {
   blocks: number
   items: number
   aiCalls30d: number
+  /** How many own AIs (API key or local LLM) the account connected; keys are never shown. */
+  aiConnections: number
 }
 
 export interface UserSession {

@@ -305,15 +305,16 @@ type User struct {
 	Blocks      int        `json:"blocks"`
 	Items       int        `json:"items"`
 	AICalls30d  int        `json:"aiCalls30d"`
+	AIConns     int        `json:"aiConnections"`
 }
 
 const userSelect = `SELECT u.id, u.email, u.name, u.status, u.is_owner, u.created_at, u.last_login_at, u.has_password, u.google,
-       c.blocks, c.items, c.ai_calls_30d
+       c.blocks, c.items, c.ai_calls_30d, c.ai_connections
   FROM admin.user_accounts u JOIN admin.user_counts c ON c.user_id = u.id`
 
 func scanUser(row pgx.Row) (User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.Status, &u.IsOwner, &u.CreatedAt, &u.LastLoginAt, &u.HasPassword, &u.Google, &u.Blocks, &u.Items, &u.AICalls30d)
+	err := row.Scan(&u.ID, &u.Email, &u.Name, &u.Status, &u.IsOwner, &u.CreatedAt, &u.LastLoginAt, &u.HasPassword, &u.Google, &u.Blocks, &u.Items, &u.AICalls30d, &u.AIConns)
 	return u, mapErr(err)
 }
 

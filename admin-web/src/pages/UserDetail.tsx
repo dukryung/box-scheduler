@@ -155,6 +155,9 @@ export function UserDetail() {
 
         <div className="flex flex-col gap-4">
           <Card title="AI 사용 (30일)">
+            <p className="border-b border-line px-4 py-2.5 text-xs text-muted">
+              {u.isOwner ? '서버 Claude 구독 사용 가능 · ' : ''}내 AI 연결 {u.aiConnections}개
+            </p>
             <ul className="flex flex-col gap-1.5 px-4 py-3 text-sm">
               {Object.keys(AI_FEATURE).map((f) => (
                 <li key={f} className="flex justify-between">

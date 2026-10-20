@@ -1,4 +1,7 @@
 import type {
+  AIConnection,
+  AISettings,
+  AIState,
   AssistantOp,
   AssistantPreview,
   AssistantTurn,
@@ -92,6 +95,16 @@ export const authApi = {
     if (params.link) q.set('link', '1')
     return `/api/auth/google/start?${q}`
   },
+}
+
+export const aiApi = {
+  state: () => request<AIState>('/ai'),
+  connect: (c: { kind: AIConnection['kind']; label: string; baseUrl?: string; model: string; apiKey?: string }) =>
+    request<AIConnection>('/ai/connections', post(c)),
+  test: (id: string) => request<{ ok: boolean; error: string }>(`/ai/connections/${id}/test`, { method: 'POST' }),
+  remove: (id: string) => request<void>(`/ai/connections/${id}`, { method: 'DELETE' }),
+  setSettings: (s: AISettings) => request<AISettings>('/ai/settings', { method: 'PUT', body: JSON.stringify(s) }),
+  models: (baseUrl: string, apiKey: string) => request<{ models: string[] }>('/ai/models', post({ baseUrl, apiKey })),
 }
 
 export const api = {

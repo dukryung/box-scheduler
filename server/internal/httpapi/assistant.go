@@ -86,10 +86,11 @@ func (a *API) assistantPreview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	started := time.Now()
-	if !a.aiAllowed(w, r, "request") {
+	assist, ok := a.aiFor(w, r, "request")
+	if !ok {
 		return
 	}
-	reply, err := a.planner.Interpret(r.Context(), req)
+	reply, err := assist.Interpret(r.Context(), req)
 	if err != nil {
 		if errors.Is(err, ai.ErrNotConfigured) {
 			writeError(w, http.StatusServiceUnavailable, "AI가 설정되지 않았어요. .env의 CLAUDE_CODE_OAUTH_TOKEN을 확인해 주세요.")
@@ -135,10 +136,11 @@ func (a *API) assistantTidy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	started := time.Now()
-	if !a.aiAllowed(w, r, "tidy") {
+	tidier, ok := a.aiFor(w, r, "tidy")
+	if !ok {
 		return
 	}
-	text, err := a.planner.Tidy(r.Context(), body.Text)
+	text, err := tidier.Tidy(r.Context(), body.Text)
 	if err != nil {
 		if errors.Is(err, ai.ErrNotConfigured) {
 			writeError(w, http.StatusServiceUnavailable, "AI가 설정되지 않았어요.")

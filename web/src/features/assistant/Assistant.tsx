@@ -8,6 +8,7 @@ import { slotToTime } from '../../lib/slots'
 import { cleanTranscript } from '../../lib/transcript'
 import { useSpeech } from '../../lib/useSpeech'
 import type { AssistantState } from './useAssistant'
+import { AIError } from '../../components/AIError'
 
 interface BarProps {
   assistant: AssistantState
@@ -273,11 +274,7 @@ export function AssistantPanel({ assistant, viewDate, onApplied, onClose }: Pane
           요청을 이해하고 있어요… 보통 5~15초 걸려요.
         </div>
       )}
-      {error && (
-        <p role="alert" className="rounded-xl bg-danger/10 px-3.5 py-3 text-sm text-danger">
-          {error}
-        </p>
-      )}
+      {error && <AIError error={error} />}
 
       {preview && status !== 'loading' && (
         <>
