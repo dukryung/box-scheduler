@@ -11,7 +11,7 @@ import { useIsMobile } from '../../lib/useIsMobile'
 import { TONE_CLASS, toneVars } from '../day/colors'
 import { BottomTabs, TopBar, ViewSwitch } from '../nav/ViewSwitch'
 
-const weekdayColor = (i: number) => (i === 0 ? 'text-danger' : i === 6 ? 'text-accent-ink' : '')
+const weekdayColor = (i: number) => (i === 0 ? 'text-danger' : i === 6 ? 'text-[#1d5fc4] dark:text-[#7fb0ff]' : '')
 
 
 export function MonthView({ month }: { month: string }) {
@@ -210,7 +210,7 @@ function DayCell({ iso, lastRow, inMonth, isToday, day, dues }: CellProps) {
 
           {day.plannedBoxes > 0 && day.doneBoxes > 0 && (
             <span className="mt-auto block h-1 rounded-full bg-subtle" title={`완료 ${day.doneBoxes} / 계획 ${day.plannedBoxes} 박스`}>
-              <span className="block h-1 rounded-full bg-accent" style={{ width: `${(day.doneBoxes / day.plannedBoxes) * 100}%` }} />
+              <span className="block h-1 rounded-full bg-accent-bright" style={{ width: `${(day.doneBoxes / day.plannedBoxes) * 100}%` }} />
             </span>
           )}
         </>
@@ -242,7 +242,7 @@ function MobileDayCell({ iso, inMonth, isToday, selected, day, dues, onSelect }:
       <span
         className={[
           'flex h-[30px] w-[30px] items-center justify-center rounded-full font-mono text-[13px]',
-          selected ? 'bg-accent font-semibold text-white' : isToday ? 'font-semibold text-accent ring-1 ring-accent' : weekdayColor(wd),
+          selected ? 'bg-accent font-semibold text-white' : isToday ? 'font-semibold text-accent dark:text-accent-bright ring-1 ring-accent' : weekdayColor(wd),
           inMonth ? '' : 'opacity-35',
         ].join(' ')}
       >
@@ -279,7 +279,7 @@ function Agenda({ date, dues }: { date: string; dues: string[] | undefined }) {
         <h2 className="text-[15px] font-bold">
           {d.getMonth() + 1}월 {d.getDate()}일 {WEEKDAYS[d.getDay()]}요일
         </h2>
-        <Link to={`/day/${date}`} className="flex items-center gap-0.5 text-[13px] font-semibold text-accent">
+        <Link to={`/day/${date}`} className="flex items-center gap-0.5 text-[13px] font-semibold text-accent dark:text-accent-bright">
           시간표 열기
           <ChevronRight size={14} />
         </Link>

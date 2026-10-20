@@ -2,6 +2,7 @@ import type { CSSProperties } from 'react'
 
 /** Identity colors a block can be given; stored on the block as hex. */
 export const BLOCK_COLORS = [
+  '#f97316', // orange
   '#6366f1', // indigo
   '#0ea5e9', // sky
   '#10b981', // emerald
@@ -21,6 +22,7 @@ export const AI_BLOCK_COLOR = '#8b5cf6'
 // text (dark), so labels stay readable whatever color was picked.
 // [light bg, light ink, dark bg, dark ink]
 const TONES: Record<string, [string, string, string, string]> = {
+  '#f97316': ['#ffe8d6', '#8a3a06', '#45281a', '#ffd2b0'],
   '#6366f1': ['#dce6ff', '#1d3b8f', '#1f2b55', '#c9d6ff'],
   '#0ea5e9': ['#d6eefb', '#0b4f71', '#12344a', '#bfe5fb'],
   '#10b981': ['#d3f1ea', '#0d584a', '#123a33', '#b5ecdf'],

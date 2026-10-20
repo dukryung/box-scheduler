@@ -111,7 +111,7 @@ export function BrainDumpPanel({ onDragItem, onNavigate, onPlace, onFocusBlock, 
       {carried && (
         <p className="text-xs text-muted">
           {carried.count}개를 {shortDate(carried.to)}로 넘겼어요.{' '}
-          <button className="font-medium text-accent underline" onClick={() => onNavigate(carried.to)}>
+          <button className="font-medium text-accent dark:text-accent-bright underline" onClick={() => onNavigate(carried.to)}>
             보러 가기
           </button>
         </p>
@@ -306,7 +306,7 @@ function BrainDumpRow({ row, onDragItem, onPlace, onFocusBlock }: RowProps) {
             aria-label={`${item.title} 보관함으로 보내기`}
             title="나중에 (보관함으로)"
             onClick={() => void moveToBacklog(item.id)}
-            className="shrink-0 rounded-md p-1 text-muted hover:bg-subtle hover:text-accent"
+            className="shrink-0 rounded-md p-1 text-muted hover:bg-subtle hover:text-accent dark:hover:text-accent-bright"
           >
             <Archive size={15} />
           </button>

@@ -39,7 +39,7 @@ export function TasksView() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-ground text-ink">
-      <TopBar>
+      <TopBar phoneTheme>
         <h1 className="flex flex-1 items-center justify-center gap-2 text-[17px] font-semibold md:flex-none md:justify-start md:pl-2 md:text-lg">
           할 일 보관함
           <span className="rounded-full bg-subtle px-2 text-xs font-semibold text-ink-2" aria-label={`남은 일 ${open}개`}>

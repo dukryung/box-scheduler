@@ -268,7 +268,7 @@ export function DayView({ date }: { date: string }) {
           </div>
           <div className="h-1.5 flex-1 rounded-full bg-subtle md:flex-none">
             <div
-              className="h-1.5 rounded-full bg-accent transition-[width]"
+              className="h-1.5 rounded-full bg-accent-bright transition-[width]"
               style={{ width: plannedBoxes ? `${(doneBoxes / plannedBoxes) * 100}%` : 0 }}
             />
           </div>
@@ -301,7 +301,7 @@ export function DayView({ date }: { date: string }) {
             {deadlines.overdue > 0 && deadlines.soon > 0 && ' · '}
             {deadlines.soon > 0 && <span className="font-semibold">오늘·내일 마감 {deadlines.soon}개</span>}
           </span>
-          <span className="shrink-0 font-semibold text-accent">보관함 보기</span>
+          <span className="shrink-0 font-semibold text-accent dark:text-accent-bright">보관함 보기</span>
         </button>
       )}
 

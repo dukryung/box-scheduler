@@ -2,7 +2,7 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Crect x=%222%22 y=%222%22 width=%229%22 height=%229%22 rx=%222%22 fill=%22%232D5BFF%22/%3E%3Crect x=%2213%22 y=%222%22 width=%229%22 height=%229%22 rx=%222%22 fill=%22%23A9BBFF%22/%3E%3Crect x=%222%22 y=%2213%22 width=%229%22 height=%229%22 rx=%222%22 fill=%22%23A9BBFF%22/%3E%3Crect x=%2213%22 y=%2213%22 width=%229%22 height=%229%22 rx=%222%22 fill=%22%232D5BFF%22/%3E%3C/svg%3E" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Crect x=%222%22 y=%222%22 width=%229%22 height=%229%22 rx=%222%22 fill=%22%23F97316%22/%3E%3Crect x=%2213%22 y=%222%22 width=%229%22 height=%229%22 rx=%222%22 fill=%22%23FDBA8C%22/%3E%3Crect x=%222%22 y=%2213%22 width=%229%22 height=%229%22 rx=%222%22 fill=%22%23FDBA8C%22/%3E%3Crect x=%2213%22 y=%2213%22 width=%229%22 height=%229%22 rx=%222%22 fill=%22%23F97316%22/%3E%3C/svg%3E" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#FFFFFF" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -12,6 +12,16 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap"
     />
     <title>Box Scheduler</title>
+    <script>
+      // Apply the saved theme before first paint (kept in sync with src/lib/theme.ts).
+      ;(function () {
+        var pref = 'system'
+        try { pref = localStorage.getItem('theme') || 'system' } catch (e) {}
+        var dark = pref === 'dark' || (pref === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light'
+        document.querySelector('meta[name=theme-color]').content = dark ? '#1C1A18' : '#FFFFFF'
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

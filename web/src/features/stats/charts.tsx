@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { hm } from '../../lib/hm'
 import { formatDuration } from '../../lib/slots'
 
-// Planned vs done is drawn as one blue ramp: the lighter planned column with the
+// Planned vs done is drawn as one orange ramp: the lighter planned column with the
 // darker done column on top of it (done never exceeds planned).
 const PLANNED = 'var(--viz-planned)'
 const DONE = 'var(--viz-done)'
@@ -225,8 +225,8 @@ export function Card({ title, subtitle, children, aside }: { title: string; subt
   )
 }
 
-// Sequential blue ramp (validated): lightest = little planned time, darkest = most.
-const RAMP = ['#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#184f95']
+// Sequential orange ramp (tokens in index.css, per mode): lightest = little planned time, darkest = most.
+const RAMP = [1, 2, 3, 4, 5, 6].map((i) => `var(--viz-seq-${i})`)
 
 /** 24 cells, one per hour, shaded by how much time was planned in that hour. */
 export function HourStrip({ hours }: { hours: Array<{ hour: number; planned: number; done: number }> }) {

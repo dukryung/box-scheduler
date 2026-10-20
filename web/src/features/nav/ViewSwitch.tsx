@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { Logo, TabDay, TabMonth, TabStats, TabTasks } from '../../components/icons'
+import { ThemeToggle } from '../../components/ThemeToggle'
 import { monthOf } from '../../lib/date'
 
 export type View = 'day' | 'month' | 'tasks' | 'stats'
@@ -51,7 +52,7 @@ export function BottomTabs({ view, date }: Props) {
           key={v}
           to={to}
           aria-current={view === v ? 'page' : undefined}
-          className={`flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] ${view === v ? 'font-semibold text-accent' : 'text-muted'}`}
+          className={`flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] ${view === v ? 'font-semibold text-accent dark:text-accent-bright' : 'text-muted'}`}
         >
           <Icon size={22} />
           {label}
@@ -61,8 +62,11 @@ export function BottomTabs({ view, date }: Props) {
   )
 }
 
-/** White top bar; the logo shows from tablet width up. */
-export function TopBar({ children }: { children: ReactNode }) {
+/**
+ * White top bar; the logo shows from tablet width up. The theme switch sits at the
+ * right end from tablet width up; on phones a view opts in with `phoneTheme`.
+ */
+export function TopBar({ children, phoneTheme = false }: { children: ReactNode; phoneTheme?: boolean }) {
   return (
     <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line bg-surface px-4 py-3 md:px-6">
       <div className="hidden items-center gap-2.5 md:flex">
@@ -70,6 +74,7 @@ export function TopBar({ children }: { children: ReactNode }) {
         <span className="text-base font-bold tracking-tight">Box Scheduler</span>
       </div>
       {children}
+      <ThemeToggle className={phoneTheme ? '' : 'max-md:hidden'} />
     </header>
   )
 }

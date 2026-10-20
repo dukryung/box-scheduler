@@ -94,7 +94,7 @@ export function StatsView() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-ground text-ink">
-      <TopBar>
+      <TopBar phoneTheme>
         <h1 className="flex-1 text-center text-[17px] font-semibold md:flex-none md:pl-2 md:text-left md:text-lg">통계</h1>
         <div className="ml-auto hidden md:block">
           <ViewSwitch view="stats" date={todayISO()} />
@@ -140,7 +140,7 @@ export function StatsView() {
                     </span>
                   )}
                 </div>
-                <div className="h-2 rounded-full bg-[#cde2fb] dark:bg-[#184f95]">
+                <div className="h-2 rounded-full bg-[var(--viz-track)]">
                   <div className="h-2 rounded-full bg-[var(--viz-done)]" style={{ width: `${rate ?? 0}%` }} />
                 </div>
                 <span className="text-[13px] text-muted">

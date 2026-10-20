@@ -37,8 +37,8 @@ export function Progress({ item }: { item: BacklogItem }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-muted">
       <span className="relative h-1 w-12 rounded-full bg-line" aria-hidden="true">
-        <span className="absolute inset-y-0 left-0 rounded-full bg-accent/40" style={{ width: `${Math.min(100, (item.scheduledBoxes / goal) * 100)}%` }} />
-        <span className="absolute inset-y-0 left-0 rounded-full bg-accent" style={{ width: `${Math.min(100, (item.doneBoxes / goal) * 100)}%` }} />
+        <span className="absolute inset-y-0 left-0 rounded-full bg-accent-bright/35" style={{ width: `${Math.min(100, (item.scheduledBoxes / goal) * 100)}%` }} />
+        <span className="absolute inset-y-0 left-0 rounded-full bg-accent-bright" style={{ width: `${Math.min(100, (item.doneBoxes / goal) * 100)}%` }} />
       </span>
       배정 {formatDuration(item.scheduledBoxes)}
       {item.doneBoxes > 0 && ` · 완료 ${formatDuration(item.doneBoxes)}`}

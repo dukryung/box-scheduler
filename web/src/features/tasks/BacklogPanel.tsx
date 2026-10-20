@@ -80,7 +80,7 @@ export function BacklogPanel({ date, onDragItem, onPlace, onMovedToDay }: Props)
         ))}
       </ul>
 
-      <Link to="/tasks" className="flex items-center justify-center gap-1 text-[13px] font-semibold text-accent">
+      <Link to="/tasks" className="flex items-center justify-center gap-1 text-[13px] font-semibold text-accent dark:text-accent-bright">
         보관함 전체 보기
         <ArrowRight size={14} />
       </Link>

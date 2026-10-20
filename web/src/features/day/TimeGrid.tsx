@@ -231,7 +231,7 @@ export function TimeGrid({
               <div
                 key={h}
                 style={{ height: rowHeight }}
-                className={`pt-1 text-right font-mono text-[11px] md:text-xs ${nowSlot !== null && Math.floor(nowSlot / SLOTS_PER_HOUR) === h ? 'font-medium text-accent' : 'text-faint'}`}
+                className={`pt-1 text-right font-mono text-[11px] md:text-xs ${nowSlot !== null && Math.floor(nowSlot / SLOTS_PER_HOUR) === h ? 'font-medium text-accent dark:text-accent-bright' : 'text-faint'}`}
               >
                 {String(h).padStart(2, '0')}
               </div>
