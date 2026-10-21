@@ -282,9 +282,60 @@ export interface TeamTask {
   updatedAt: string
   doneAt: string | null
   assignees: TaskAssignee[]
+  /** The parts it was split into ("AI로 업무 나누기"), each given to one person. */
+  subtasks: TeamSubtask[]
   /** What the signed-in person may do with it. */
   canEdit: boolean
   canSetStatus: boolean
+  /** May split it into subtasks (its creator, its assignees, managers and the owner). */
+  canPlan: boolean
+}
+
+export interface TeamSubtask {
+  id: string
+  title: string
+  boxes: number
+  /** '' when no one has it (they left the team). */
+  assigneeId: string
+  position: number
+  /** From the pieces in its owner's Brain Dump. */
+  plannedBoxes: number
+  doneBoxes: number
+  status: TeamTaskStatus
+  /** A piece is done or on the timetable: splitting again keeps it. */
+  started: boolean
+}
+
+export interface PlanSub {
+  title: string
+  boxes: number
+  assigneeId: string
+  reason?: string
+}
+
+export interface PlanPerson {
+  userId: string
+  name: string
+  /** Boxes meant for them (0: not set). */
+  share: number
+  /** In subtasks already started, and in the ones being planned. */
+  kept: number
+  new: number
+  /** Working days the new pieces land on, and the first and last of them. */
+  days: number
+  from: string
+  to: string
+  /** Did not fit before the due date. */
+  shortage: number
+}
+
+export interface TeamPlan {
+  subtasks: PlanSub[]
+  kept: TeamSubtask[]
+  people: PlanPerson[]
+  notes?: string
+  period: { from: string; to: string; workingDays: number }
+  policy: { workStart: string; workEnd: string; lunchStart: string; lunchEnd: string; capacity: number; perTaskMax: number }
 }
 
 /** Create sends every field; update sends only what changed ("" clears a date, 0 the estimate). */

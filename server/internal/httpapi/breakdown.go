@@ -71,14 +71,14 @@ func (a *API) loadBreakdown(w http.ResponseWriter, r *http.Request, body breakdo
 	if item.DueDate != nil {
 		due = *item.DueDate
 	}
-	days, period, existing, ok := a.breakdownDays(w, r, u.ID, body, due, item.ID)
+	days, period, existing, ok := a.breakdownDays(w, r, u.ID, body, due, item.ID, nil)
 	return item, days, period, existing, ok
 }
 
 // breakdownDays lists userID's working days from today (or tomorrow, after
 // work) to due, with the time already taken on each. Open pieces of
 // exceptParent are not counted (splitting again replaces them); existing says how many there are.
-func (a *API) breakdownDays(w http.ResponseWriter, r *http.Request, userID string, body breakdownBody, due, exceptParent string) ([]breakdown.Day, breakdownPeriod, int, bool) {
+func (a *API) breakdownDays(w http.ResponseWriter, r *http.Request, userID string, body breakdownBody, due, exceptParent string, replacing []string) ([]breakdown.Day, breakdownPeriod, int, bool) {
 	today, ok := parseDate(body.Today)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "today must be YYYY-MM-DD")
@@ -107,7 +107,7 @@ func (a *API) breakdownDays(w http.ResponseWriter, r *http.Request, userID strin
 		writeError(w, http.StatusBadRequest, "기간 안에 근무일(월~금)이 없어요")
 		return nil, breakdownPeriod{}, 0, false
 	}
-	loads, err := a.store.DayLoads(r.Context(), userID, dates[0], dates[len(dates)-1], exceptParent)
+	loads, err := a.store.DayLoads(r.Context(), userID, dates[0], dates[len(dates)-1], exceptParent, replacing)
 	if err != nil {
 		writeStoreError(w, err)
 		return nil, breakdownPeriod{}, 0, false

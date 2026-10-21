@@ -36,6 +36,7 @@ func isAssigned(userID string, t store.TeamTask) bool {
 func withPermissions(role, userID string, t store.TeamTask) store.TeamTask {
 	t.CanEdit = canEditTask(role, userID, t)
 	t.CanSetStatus = t.CanEdit || isAssigned(userID, t)
+	t.CanPlan = t.CanSetStatus
 	return t
 }
 
@@ -318,7 +319,9 @@ func (a *API) notifyAssigned(r *http.Request, teamID string, before, after store
 }
 
 func periodLabel(t store.TeamTask) string {
-	md := func(iso string) string { return strings.TrimLeft(iso[5:7], "0") + "/" + strings.TrimLeft(iso[8:10], "0") }
+	md := func(iso string) string {
+		return strings.TrimLeft(iso[5:7], "0") + "/" + strings.TrimLeft(iso[8:10], "0")
+	}
 	switch {
 	case t.StartDate != nil && t.DueDate != nil:
 		return md(*t.StartDate) + "~" + md(*t.DueDate)

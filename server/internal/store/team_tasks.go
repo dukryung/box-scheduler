@@ -22,9 +22,11 @@ type TeamTask struct {
 	UpdatedAt     time.Time      `json:"updatedAt"`
 	DoneAt        *time.Time     `json:"doneAt"`
 	Assignees     []TaskAssignee `json:"assignees"`
+	Subtasks      []TeamSubtask  `json:"subtasks"`
 	// What the caller may do with it, worked out from their role.
 	CanEdit      bool `json:"canEdit"`
 	CanSetStatus bool `json:"canSetStatus"`
+	CanPlan      bool `json:"canPlan"` // may split it into subtasks
 }
 
 type TaskAssignee struct {
@@ -60,6 +62,7 @@ func scanTeamTask(row pgx.Row) (TeamTask, error) {
 	var t TeamTask
 	err := row.Scan(&t.ID, &t.Title, &t.Note, &t.Status, &t.StartDate, &t.DueDate, &t.EstimateBoxes, &t.CreatedBy, &t.CreatedByName, &t.CreatedAt, &t.UpdatedAt, &t.DoneAt)
 	t.Assignees = []TaskAssignee{}
+	t.Subtasks = []TeamSubtask{}
 	return t, err
 }
 
@@ -95,6 +98,15 @@ func (s *Store) TeamTasks(ctx context.Context, teamID string) ([]TeamTask, error
 			list[i].Assignees = a
 		}
 	}
+	subs, err := s.subtasks(ctx, `s.team_id = $1`, teamID)
+	if err != nil {
+		return nil, err
+	}
+	for taskID, x := range subs {
+		if i, ok := byID[taskID]; ok {
+			list[i].Subtasks = x
+		}
+	}
 	return list, nil
 }
 
@@ -105,8 +117,15 @@ func (s *Store) TeamTaskByID(ctx context.Context, teamID, taskID string) (TeamTa
 		return t, mapErr(err)
 	}
 	as, err := s.taskAssignees(ctx, `a.task_id = $1`, taskID)
+	if err != nil {
+		return t, err
+	}
 	if a, ok := as[taskID]; ok {
 		t.Assignees = a
+	}
+	subs, err := s.subtasks(ctx, `s.task_id = $1`, taskID)
+	if x, ok := subs[taskID]; ok {
+		t.Subtasks = x
 	}
 	return t, err
 }
@@ -214,8 +233,12 @@ func (s *Store) TeamTaskItem(ctx context.Context, userID, taskID string) (string
 // LinkTeamTaskItem makes (or refreshes) the backlog item standing for userID's
 // share of a team task, so its split pieces have a parent; returns its id.
 func (s *Store) LinkTeamTaskItem(ctx context.Context, userID string, t TeamTask, share int) (string, error) {
+	return linkTeamTaskItem(ctx, s.pool, userID, t, share)
+}
+
+func linkTeamTaskItem(ctx context.Context, q dbtx, userID string, t TeamTask, share int) (string, error) {
 	var id string
-	err := s.pool.QueryRow(ctx, `
+	err := q.QueryRow(ctx, `
 		INSERT INTO brain_dump_items (user_id, date, title, estimate_boxes, status, due_date, note, team_task_id)
 		VALUES ($1, NULL, $2, NULLIF($3, 0), 'open', $4::date, NULLIF($5, ''), $6)
 		ON CONFLICT (user_id, team_task_id) WHERE team_task_id IS NOT NULL DO UPDATE SET
@@ -223,4 +246,120 @@ func (s *Store) LinkTeamTaskItem(ctx context.Context, userID string, t TeamTask,
 			status = CASE WHEN brain_dump_items.status IN ('open', 'done') THEN 'open' ELSE brain_dump_items.status END
 		RETURNING id::text`, userID, t.Title, share, t.DueDate, t.Note, t.ID).Scan(&id)
 	return id, mapErr(err)
+}
+
+// TeamSubtask is one part of a team task, given to one person. Its progress
+// comes from the Brain Dump pieces it was spread into.
+type TeamSubtask struct {
+	ID           string `json:"id"`
+	Title        string `json:"title"`
+	Boxes        int    `json:"boxes"`
+	AssigneeID   string `json:"assigneeId"` // "" when no one has it (they left)
+	Position     int    `json:"position"`
+	PlannedBoxes int    `json:"plannedBoxes"`
+	DoneBoxes    int    `json:"doneBoxes"`
+	Status       string `json:"status"` // todo | doing | done
+	// Started subtasks (a piece done or on the timetable) stay when the task is split again.
+	Started bool `json:"started"`
+}
+
+func (s *Store) subtasks(ctx context.Context, where, arg string) (map[string][]TeamSubtask, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT s.id::text, s.task_id::text, s.title, s.boxes, coalesce(s.assignee_id::text, ''), s.position,
+			coalesce(sum(c.estimate_boxes) FILTER (WHERE c.status IN ('open', 'scheduled', 'done')), 0)::int,
+			coalesce(sum(c.estimate_boxes) FILTER (WHERE c.status = 'done'), 0)::int,
+			count(c.id) FILTER (WHERE c.status IN ('open', 'scheduled'))::int,
+			count(c.id) FILTER (WHERE c.status IN ('open', 'scheduled', 'done'))::int,
+			coalesce(bool_or(c.status = 'done' OR EXISTS (SELECT 1 FROM time_blocks b WHERE b.brain_dump_id = c.id)), false)
+		FROM team_subtasks s LEFT JOIN brain_dump_items c ON c.team_subtask_id = s.id
+		WHERE `+where+`
+		GROUP BY s.id ORDER BY s.position`, arg)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+	out := map[string][]TeamSubtask{}
+	for rows.Next() {
+		var x TeamSubtask
+		var taskID string
+		var open, n int
+		if err := rows.Scan(&x.ID, &taskID, &x.Title, &x.Boxes, &x.AssigneeID, &x.Position, &x.PlannedBoxes, &x.DoneBoxes, &open, &n, &x.Started); err != nil {
+			return nil, err
+		}
+		switch {
+		case n > 0 && open == 0:
+			x.Status = "done"
+		case x.Started:
+			x.Status = "doing"
+		default:
+			x.Status = "todo"
+		}
+		out[taskID] = append(out[taskID], x)
+	}
+	return out, mapErr(rows.Err())
+}
+
+// NewSubtask is a subtask to save with the pieces it is spread into (none when no one has it).
+type NewSubtask struct {
+	Title      string
+	Boxes      int
+	AssigneeID string
+	Pieces     []NewPiece
+}
+
+// ReplaceSubtasks swaps the task's subtasks that have not started (and their
+// open, unplaced pieces, along with pieces from before subtasks existed) for
+// subs. Started ones stay. Each person with pieces gets the backlog item that
+// stands for their part, its estimate set from shares.
+func (s *Store) ReplaceSubtasks(ctx context.Context, t TeamTask, subs []NewSubtask, shares map[string]int) (created int, err error) {
+	err = s.inTx(ctx, func(tx pgx.Tx) error {
+		var replaced []string
+		keptMax := -1
+		for _, x := range t.Subtasks {
+			if x.Started {
+				keptMax = max(keptMax, x.Position)
+			} else {
+				replaced = append(replaced, x.ID)
+			}
+		}
+		if _, err := tx.Exec(ctx, `
+			DELETE FROM brain_dump_items i
+			WHERE i.status = 'open' AND NOT EXISTS (SELECT 1 FROM time_blocks b WHERE b.brain_dump_id = i.id)
+			  AND (i.team_subtask_id = ANY($2::uuid[])
+			       OR (i.team_subtask_id IS NULL AND i.parent_id IN (SELECT p.id FROM brain_dump_items p WHERE p.team_task_id = $1)))`,
+			t.ID, replaced); err != nil {
+			return mapErr(err)
+		}
+		if _, err := tx.Exec(ctx, `DELETE FROM team_subtasks WHERE id = ANY($1::uuid[])`, replaced); err != nil {
+			return mapErr(err)
+		}
+		parents := map[string]string{}
+		for i, x := range subs {
+			var id string
+			if err := tx.QueryRow(ctx, `INSERT INTO team_subtasks (task_id, team_id, title, boxes, assignee_id, position)
+				SELECT $1, team_id, $2, $3, NULLIF($4, '')::uuid, $5 FROM team_tasks WHERE id = $1 RETURNING id::text`,
+				t.ID, x.Title, x.Boxes, x.AssigneeID, keptMax+1+i).Scan(&id); err != nil {
+				return mapErr(err)
+			}
+			if x.AssigneeID == "" || len(x.Pieces) == 0 {
+				continue
+			}
+			parent := parents[x.AssigneeID]
+			if parent == "" {
+				if parent, err = linkTeamTaskItem(ctx, tx, x.AssigneeID, t, shares[x.AssigneeID]); err != nil {
+					return err
+				}
+				parents[x.AssigneeID] = parent
+			}
+			for _, p := range x.Pieces {
+				if _, err := tx.Exec(ctx, `INSERT INTO brain_dump_items (user_id, date, title, estimate_boxes, status, due_date, parent_id, team_subtask_id)
+					VALUES ($1, $2, $3, $4, 'open', $5::date, $6, $7)`, x.AssigneeID, p.Date, p.Title, p.Boxes, t.DueDate, parent, id); err != nil {
+					return mapErr(err)
+				}
+				created++
+			}
+		}
+		return nil
+	})
+	return created, err
 }

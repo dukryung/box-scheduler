@@ -117,10 +117,9 @@ try {
   check(!(await M('GET', '/notifications')).body.items.some((n) => n.title.includes('조용한 업무')), 'team notifications off: none')
   await M('PUT', '/notifications/settings', { reminders: true, team: true, timezone: tz })
 
-  const applied = (await call('POST', `/teams/${team.id}/tasks/${task.id}/breakdown/apply`, { today: date, now: '09:00', userId: minji.id, subtasks: [{ title: '초안', boxes: 12 }], replace: true }, lead.cookie)).body
-  const s1 = await push.waitFor((x) => x.id === sub.id && x.payload?.kind === 'split')
-  const firstDay = applied.plan.days.find((d) => d.pieces.length).date
-  check(s1?.payload.title === '‘API 문서화 v2’ 내 몫이 Brain Dump에 들어갔어요' && s1.payload.body.startsWith('팀장 님이 AI로 세분화') && s1.payload.url === `/day/${firstDay}`, `split: ${s1?.payload.body}`)
+  await call('POST', `/teams/${team.id}/tasks/${task.id}/plan/apply`, { today: date, now: '09:00', subtasks: [{ title: '초안', boxes: 12, assigneeId: minji.id }] }, lead.cookie)
+  const s1 = await push.waitFor((x) => x.id === sub.id && x.payload?.kind === 'subtasks')
+  check(s1?.payload.title === '‘API 문서화 v2’ 하위 업무 1개를 맡았어요' && s1.payload.body.startsWith('팀장 님이 업무를 나눔 · 초안') && s1.payload.url === `/team/${team.id}`, `subtasks: ${s1?.payload.body}`)
 
   // 5. An expired browser subscription is forgotten
   const gone = push.subscription('gone')

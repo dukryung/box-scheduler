@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { teamApi, teamBreakdown } from '../../api/client'
+import { teamApi } from '../../api/client'
 import type { TeamDetail, TeamTask, TeamTaskInput, TeamTaskStatus } from '../../api/types'
 import { ConfirmInline } from '../../components/ConfirmInline'
 import { Close, Plus, Sparkle } from '../../components/icons'
@@ -8,7 +8,7 @@ import { todayISO } from '../../lib/date'
 import { formatDuration } from '../../lib/slots'
 import { STATUS_LABEL, STATUS_TONE, STATUSES, periodText } from '../../lib/teamTasks'
 import { useIsMobile } from '../../lib/useIsMobile'
-import { BreakdownDialog } from '../tasks/BreakdownDialog'
+import { TeamPlanDialog } from './TeamPlanDialog'
 
 const field = 'h-11 w-full rounded-[10px] border border-line-strong bg-surface px-3.5 text-[15px] text-ink outline-none focus:border-accent disabled:opacity-60 md:text-sm'
 const VIEW_KEY = 'bs.teamTasks.view'
@@ -56,15 +56,17 @@ function Assignees({ task }: { task: TeamTask }) {
 function Meta({ task, today }: { task: TeamTask; today: string }) {
   const period = periodText(task)
   const late = task.status !== 'done' && task.dueDate !== null && task.dueDate < today
+  // Progress by subtask when the task was split, else by what each person split for themselves.
   const split = task.assignees.filter((a) => a.split)
-  const planned = split.reduce((n, a) => n + a.plannedBoxes, 0)
-  const done = split.reduce((n, a) => n + a.doneBoxes, 0)
+  const planned = task.subtasks.length ? task.subtasks.reduce((n, x) => n + x.boxes, 0) : split.reduce((n, a) => n + a.plannedBoxes, 0)
+  const done = task.subtasks.length ? task.subtasks.reduce((n, x) => n + Math.min(x.doneBoxes, x.boxes), 0) : split.reduce((n, a) => n + a.doneBoxes, 0)
   return (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
       {period && <span className={`font-mono ${late ? 'font-semibold text-danger' : ''}`}>{late ? `${period} · 지남` : period}</span>}
       {task.estimateBoxes && <span className="font-mono">{formatDuration(task.estimateBoxes)}</span>}
+      {task.subtasks.length > 0 && <span>하위 {task.subtasks.filter((x) => x.status === 'done').length}/{task.subtasks.length}</span>}
       {planned > 0 && (
-        <span className="inline-flex items-center gap-1.5" title={`세분화한 일 ${formatDuration(planned)} 중 ${formatDuration(done)} 완료`}>
+        <span className="inline-flex items-center gap-1.5" title={`나눈 일 ${formatDuration(planned)} 중 ${formatDuration(done)} 완료`}>
           <span className="relative h-1 w-10 rounded-full bg-line" aria-hidden="true">
             <span className="absolute inset-y-0 left-0 rounded-full bg-accent-bright" style={{ width: `${percent(done, planned)}%` }} />
           </span>
@@ -327,14 +329,14 @@ export function TaskEditor({ team, meId, task: given, onClose, onSaved, onDelete
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [splitFor, setSplitFor] = useState<string | null>(null)
+  const [planning, setPlanning] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !splitFor && onClose()
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && !planning && onClose()
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, splitFor])
+  }, [onClose, planning])
 
   // Splitting works from the saved task, so unsaved edits come first.
   const dirty =
@@ -346,8 +348,7 @@ export function TaskEditor({ team, meId, task: given, onClose, onSaved, onDelete
       dueDate !== (task.dueDate ?? '') ||
       estimate !== boxesToHours(task.estimateBoxes) ||
       JSON.stringify(Object.entries(assigned).sort()) !== JSON.stringify(task.assignees.map((a) => [a.userId, boxesToHours(a.boxes)]).sort()))
-  const canSplit = (userId: string) => !!task && (userId === meId || isManager)
-  const splitting = task?.assignees.find((a) => a.userId === splitFor)
+  const planBlocked = !task ? '' : !task.dueDate ? '마감일을 정하고 저장하면 업무를 나눌 수 있어요.' : !task.assignees.length ? '담당자를 정하고 저장하면 업무를 나눌 수 있어요.' : dirty ? '바꾼 내용을 저장한 뒤 나눌 수 있어요.' : ''
 
   const estimateBoxes = hoursToBoxes(estimate)
   const shares = Object.values(assigned).map(hoursToBoxes)
@@ -494,39 +495,14 @@ export function TaskEditor({ team, meId, task: given, onClose, onSaved, onDelete
                       />
                     )}
                   </div>
-                  {saved && (saved.split || canSplit(m.userId)) && (
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-[26px] text-xs text-muted">
-                      {saved.split && (
-                        <span>
-                          Brain Dump {formatDuration(saved.plannedBoxes)} 중 {formatDuration(saved.doneBoxes)} 완료
-                        </span>
-                      )}
-                      {canSplit(m.userId) && (
-                        <button
-                          type="button"
-                          aria-label={`${personName(m)} 몫 AI로 세분화`}
-                          className={`${aiOutlineButton} h-7 px-2.5 text-xs`}
-                          disabled={dirty || !task?.dueDate}
-                          onClick={() => {
-                            setNotice(null)
-                            setSplitFor(m.userId)
-                          }}
-                        >
-                          <Sparkle size={13} /> {saved.split ? '다시 세분화' : 'AI로 세분화'}
-                        </button>
-                      )}
-                    </div>
+                  {saved?.split && (
+                    <span className="pl-[26px] text-xs text-muted">
+                      Brain Dump {formatDuration(saved.plannedBoxes)} 중 {formatDuration(saved.doneBoxes)} 완료
+                    </span>
                   )}
                 </div>
               )
             })}
-            {task && !task.dueDate && task.assignees.some((a) => canSplit(a.userId)) && <p className="text-xs text-muted">마감일을 정하고 저장하면 담당자 몫을 AI로 세분화할 수 있어요.</p>}
-            {task?.dueDate && dirty && task.assignees.some((a) => canSplit(a.userId)) && <p className="text-xs text-muted">바꾼 내용을 저장한 뒤 세분화할 수 있어요.</p>}
-            {notice && (
-              <p role="status" className="text-xs text-good">
-                {notice}
-              </p>
-            )}
             {editable && !isManager && <p className="text-xs text-muted">일반 멤버는 본인만 담당자로 지정할 수 있어요.</p>}
             {estimateBoxes && !Number.isNaN(estimateBoxes) && shareSum > 0 && shareSum !== estimateBoxes && (
               <p className="text-xs text-ink-2">
@@ -534,6 +510,56 @@ export function TaskEditor({ team, meId, task: given, onClose, onSaved, onDelete
               </p>
             )}
           </fieldset>
+
+          {task && (task.subtasks.length > 0 || task.canPlan) && (
+            <section aria-label="하위 업무" className="flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-medium text-ink-2">
+                  하위 업무 {task.subtasks.length > 0 && <span className="font-mono text-muted">{task.subtasks.filter((x) => x.status === 'done').length}/{task.subtasks.length}</span>}
+                </h3>
+                {task.canPlan && (
+                  <button
+                    type="button"
+                    className={`${aiOutlineButton} h-8 px-3 text-xs`}
+                    disabled={!!planBlocked}
+                    onClick={() => {
+                      setNotice(null)
+                      setPlanning(true)
+                    }}
+                  >
+                    <Sparkle size={13} /> {task.subtasks.length ? '업무 다시 나누기' : 'AI로 업무 나누기'}
+                  </button>
+                )}
+              </div>
+              {task.subtasks.length === 0 && task.canPlan && !planBlocked && (
+                <p className="text-xs text-muted">업무 전체를 하위 업무로 나누고, 담당자마다 맡은 시간에 맞게 배정해 각자의 Brain Dump에 넣어요.</p>
+              )}
+              {planBlocked && task.canPlan && <p className="text-xs text-muted">{planBlocked}</p>}
+              {task.subtasks.length > 0 && (
+                <ul className="flex flex-col divide-y divide-line rounded-xl border border-line">
+                  {task.subtasks.map((x) => {
+                    const who = task.assignees.find((a) => a.userId === x.assigneeId)
+                    return (
+                      <li key={x.id} aria-label={x.title} className="flex items-center gap-2 px-3 py-2 text-sm">
+                        <StatusPill status={x.status} />
+                        <span className={`min-w-0 flex-1 truncate ${x.status === 'done' ? `${doneStrike} text-muted` : ''}`}>{x.title}</span>
+                        <span className="shrink-0 font-mono text-xs text-muted">
+                          {x.doneBoxes > 0 ? `${formatDuration(Math.min(x.doneBoxes, x.boxes))} / ` : ''}
+                          {formatDuration(x.boxes)}
+                        </span>
+                        <span className="w-14 shrink-0 truncate text-right text-xs text-ink-2">{who ? personName(who) : '담당자 없음'}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              {notice && (
+                <p role="status" className="text-xs text-good">
+                  {notice}
+                </p>
+              )}
+            </section>
+          )}
 
           {task && (
             <p className="text-xs text-muted">
@@ -575,20 +601,17 @@ export function TaskEditor({ team, meId, task: given, onClose, onSaved, onDelete
           )}
         </footer>
       </section>
-      {task && splitting && (
-        <BreakdownDialog
-          item={{ id: task.id, title: task.title, dueDate: task.dueDate }}
-          subtitle={`${task.title} · ${personName(splitting)} 몫${splitting.boxes ? ` ${formatDuration(splitting.boxes)}` : ''}`}
-          today={todayISO()}
-          calls={teamBreakdown(team.id, task.id, splitting.userId)}
-          onClose={() => setSplitFor(null)}
-          onApplied={(message, r) => {
-            setSplitFor(null)
-            setNotice(`${personName(splitting)}: ${message}`)
-            if (r.task) {
-              setTask(r.task)
-              onChanged?.(r.task)
-            }
+      {task && planning && (
+        <TeamPlanDialog
+          teamId={team.id}
+          task={task}
+          onClose={() => setPlanning(false)}
+          onApplied={(t, message) => {
+            setPlanning(false)
+            setNotice(message)
+            setTask(t)
+            onChanged?.(t)
+            requestAnimationFrame(() => document.querySelector('[role=dialog] section[aria-label="하위 업무"]')?.scrollIntoView({ block: 'nearest' }))
           }}
         />
       )}

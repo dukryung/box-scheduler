@@ -18,6 +18,8 @@ const task = (p: Partial<TeamTask>): TeamTask => ({
   assignees: [],
   canEdit: true,
   canSetStatus: true,
+  canPlan: true,
+  subtasks: [],
   ...p,
 })
 const who = (userId: string, boxes: number | null = null) => ({ userId, name: userId, email: `${userId}@x`, boxes, split: false, plannedBoxes: 0, doneBoxes: 0 })

@@ -22,8 +22,9 @@ type DayLoad struct {
 }
 
 // DayLoads collects the load of each date in [from, to]. Open, unplaced pieces
-// of exceptParent are left out (splitting again replaces them); every block counts.
-func (s *Store) DayLoads(ctx context.Context, userID, from, to, exceptParent string) (map[string]*DayLoad, error) {
+// of exceptParent are left out (splitting again replaces them) unless they
+// belong to a team subtask other than those in replacing; every block counts.
+func (s *Store) DayLoads(ctx context.Context, userID, from, to, exceptParent string, replacing []string) (map[string]*DayLoad, error) {
 	loads := map[string]*DayLoad{}
 	get := func(d string) *DayLoad {
 		if loads[d] == nil {
@@ -47,9 +48,9 @@ func (s *Store) DayLoads(ctx context.Context, userID, from, to, exceptParent str
 	}
 	rows.Close()
 	rows, err = s.pool.Query(ctx,
-		`SELECT i.date::text, COALESCE(i.estimate_boxes, 0), (i.parent_id IS NOT DISTINCT FROM NULLIF($4, '')::uuid) FROM brain_dump_items i
+		`SELECT i.date::text, COALESCE(i.estimate_boxes, 0), (i.parent_id IS NOT DISTINCT FROM NULLIF($4, '')::uuid AND (i.team_subtask_id IS NULL OR i.team_subtask_id = ANY($5::uuid[]))) FROM brain_dump_items i
 		  WHERE i.user_id = $1 AND i.date BETWEEN $2 AND $3 AND i.status = 'open'
-		    AND NOT EXISTS (SELECT 1 FROM time_blocks b WHERE b.brain_dump_id = i.id)`, userID, from, to, exceptParent)
+		    AND NOT EXISTS (SELECT 1 FROM time_blocks b WHERE b.brain_dump_id = i.id)`, userID, from, to, exceptParent, replacing)
 	if err != nil {
 		return nil, mapErr(err)
 	}

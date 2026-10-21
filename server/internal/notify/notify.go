@@ -69,7 +69,7 @@ func New(ctx context.Context, st *store.Store, box *secretbox.Box, subscriber, a
 }
 
 func (n *Notifier) PushEnabled() bool { return n != nil && n.pub != "" }
-func (n *Notifier) PublicKey() string  { return n.pub }
+func (n *Notifier) PublicKey() string { return n.pub }
 
 // AllowedEndpoint says whether a browser's push endpoint is one we will post to.
 func (n *Notifier) AllowedEndpoint(endpoint string) bool {
