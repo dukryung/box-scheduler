@@ -117,7 +117,7 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(sameOrigin)
 			r.Use(a.requireUser)
-			r.Use(timeoutExcept(30*time.Second, "/ai-suggest", "/assistant/preview", "/assistant/tidy", "/ai/connections", "/test", "/breakdown"))
+			r.Use(timeoutExcept(30*time.Second, slowPaths...))
 
 			r.Get("/days/{date}", a.getDay)
 			r.Put("/days/{date}/note", a.putDayNote)
@@ -195,6 +195,10 @@ func userID(r *http.Request) string {
 
 // timeoutExcept applies a request timeout to every route except those ending in
 // one of suffixes (AI calls can take well over a minute).
+// slowPaths end the routes that wait on an AI (a local model can take minutes),
+// so they are left out of the 30-second request timeout.
+var slowPaths = []string{"/ai-suggest", "/assistant/preview", "/assistant/tidy", "/ai/connections", "/test", "/breakdown", "/plan"}
+
 func timeoutExcept(d time.Duration, suffixes ...string) func(http.Handler) http.Handler {
 	withTimeout := middleware.Timeout(d)
 	return func(next http.Handler) http.Handler {
