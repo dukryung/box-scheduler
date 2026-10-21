@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import type { BacklogItem } from '../../api/types'
 import { ConfirmInline } from '../../components/ConfirmInline'
-import { ArrowRight, Close, Plus } from '../../components/icons'
+import { ArrowRight, Close, Plus, Sparkle } from '../../components/icons'
 import { card, doneStrike, srOnly } from '../../components/styles'
 import { GROUP_LABELS, deadlineCounts, groupBacklog } from '../../lib/backlog'
 import { todayISO } from '../../lib/date'
@@ -10,6 +10,7 @@ import { formatDuration } from '../../lib/slots'
 import { useTasksStore } from '../../store/tasksStore'
 import { BottomTabs, TopBar, ViewSwitch } from '../nav/ViewSwitch'
 import { DueBadge, PriorityBadge, Progress } from './parts'
+import { BreakdownDialog } from './BreakdownDialog'
 
 export function TasksView() {
   const { items, loaded, error, load, add, remove, setError } = useTasksStore()
@@ -187,8 +188,9 @@ interface RowProps {
 }
 
 function TaskRow({ item, today, open, onToggle, onMoved }: RowProps) {
-  const { update, remove, moveToDay } = useTasksStore()
+  const { update, remove, moveToDay, load } = useTasksStore()
   const [confirming, setConfirming] = useState(false)
+  const [splitting, setSplitting] = useState(false)
   const [editingTitle, setEditingTitle] = useState(false)
   const done = item.status === 'done'
   const estimate = item.estimateBoxes
@@ -256,6 +258,19 @@ function TaskRow({ item, today, open, onToggle, onMoved }: RowProps) {
               </span>
             )}
             <Progress item={item} />
+            {item.pieces > 0 && (
+              <span className="rounded-md bg-ai-soft px-1.5 py-0.5 text-[11px] font-semibold text-ai-ink">
+                세분화 {item.pieces}개{item.piecesDone > 0 ? ` · 완료 ${item.piecesDone}` : ''}
+              </span>
+            )}
+            {!done && (
+              <button
+                onClick={() => setSplitting(true)}
+                className="flex h-7 items-center gap-1 rounded-md border border-ai-line px-2 text-[11px] font-semibold text-ai-ink hover:bg-ai-soft"
+              >
+                <Sparkle size={12} /> {item.pieces > 0 ? '다시 세분화' : 'AI로 세분화'}
+              </button>
+            )}
             {item.note && !open && <span className="max-w-full truncate text-faint">메모: {item.note}</span>}
           </div>
         </div>
@@ -290,6 +305,18 @@ function TaskRow({ item, today, open, onToggle, onMoved }: RowProps) {
         </div>
       </div>
 
+      {splitting && (
+        <BreakdownDialog
+          item={item}
+          today={today}
+          onClose={() => setSplitting(false)}
+          onApplied={(message) => {
+            setSplitting(false)
+            onMoved(message)
+            void load()
+          }}
+        />
+      )}
       {confirming && (
         <ConfirmInline
           message={`시간표의 블록 ${item.blockCount}개도 함께 지워져요.`}

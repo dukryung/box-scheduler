@@ -29,7 +29,7 @@ var aiFeatures = []string{"plan", "request", "tidy"}
 
 func featureChoice(s store.AISettings, feature string) string {
 	switch feature {
-	case "plan":
+	case "plan", "breakdown": // splitting a task uses the planning AI
 		return s.Plan
 	case "request":
 		return s.Request
@@ -195,6 +195,11 @@ func (t *trackedAI) Plan(ctx context.Context, req ai.PlanRequest) (plan ai.Plan,
 func (t *trackedAI) Interpret(ctx context.Context, req ai.AssistantRequest) (reply ai.AssistantReply, err error) {
 	err = t.run(ctx, func(ctx context.Context) error { reply, err = t.p.Interpret(ctx, req); return err })
 	return reply, err
+}
+
+func (t *trackedAI) Breakdown(ctx context.Context, req ai.BreakdownRequest) (plan ai.BreakdownPlan, err error) {
+	err = t.run(ctx, func(ctx context.Context) error { plan, err = t.p.Breakdown(ctx, req); return err })
+	return plan, err
 }
 
 func (t *trackedAI) Tidy(ctx context.Context, text string) (out string, err error) {

@@ -10,6 +10,7 @@ const item = (id: string, over: Partial<BrainDumpItem> = {}): BrainDumpItem => (
   estimateBoxes: null,
   priority: null,
   category: null,
+  parentId: null,
   status: 'open',
   carriedFrom: null,
   dueDate: null,

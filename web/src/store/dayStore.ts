@@ -135,6 +135,7 @@ export const useDayStore = create<DayState>((set, get) => {
         carriedFrom: null,
         dueDate,
         note: null,
+        parentId: null,
       }
       set((s) => ({ brainDump: [...s.brainDump, optimistic] }))
       try {

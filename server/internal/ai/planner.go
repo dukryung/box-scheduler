@@ -74,6 +74,7 @@ type Provider interface {
 	Planner
 	Assistant
 	Tidier
+	Breakdowner
 }
 
 // caller makes one Claude call whose output is constrained to schema and

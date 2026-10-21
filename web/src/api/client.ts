@@ -4,6 +4,8 @@ import type {
   AIState,
   AssistantOp,
   AssistantPreview,
+  BreakdownPreview,
+  BreakdownSub,
   AssistantTurn,
   BacklogItem,
   Block,
@@ -95,6 +97,14 @@ export const authApi = {
     if (params.link) q.set('link', '1')
     return `/api/auth/google/start?${q}`
   },
+}
+
+type BreakdownBody = { today: string; now: string; dueDate?: string; subtasks?: BreakdownSub[]; replace?: boolean }
+
+export const breakdownApi = {
+  suggest: (id: string, b: BreakdownBody, signal?: AbortSignal) => request<BreakdownPreview>(`/tasks/${id}/breakdown`, { ...post(b), signal }),
+  allocate: (id: string, b: BreakdownBody) => request<BreakdownPreview>(`/tasks/${id}/breakdown/allocate`, post(b)),
+  apply: (id: string, b: BreakdownBody) => request<{ created: number; removed: number; shortage: number }>(`/tasks/${id}/breakdown/apply`, post(b)),
 }
 
 export const aiApi = {

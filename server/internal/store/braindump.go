@@ -19,6 +19,8 @@ type BrainDumpItem struct {
 	CarriedFrom   *string `json:"carriedFrom"`
 	DueDate       *string `json:"dueDate"`
 	Note          *string `json:"note"`
+	// ParentID is the backlog item this is a piece of (AI로 세분화), if any.
+	ParentID *string `json:"parentId"`
 }
 
 // BrainDumpPatch changes only the fields that are set. For DueDate and Note an
@@ -33,11 +35,11 @@ type BrainDumpPatch struct {
 	Note          *string `json:"note"`
 }
 
-const brainDumpCols = `id::text, date::text, title, estimate_boxes, priority, category, status, carried_from::text, due_date::text, note`
+const brainDumpCols = `id::text, date::text, title, estimate_boxes, priority, category, status, carried_from::text, due_date::text, note, parent_id::text`
 
 func scanBrainDump(row interface{ Scan(...any) error }) (BrainDumpItem, error) {
 	var it BrainDumpItem
-	err := row.Scan(&it.ID, &it.Date, &it.Title, &it.EstimateBoxes, &it.Priority, &it.Category, &it.Status, &it.CarriedFrom, &it.DueDate, &it.Note)
+	err := row.Scan(&it.ID, &it.Date, &it.Title, &it.EstimateBoxes, &it.Priority, &it.Category, &it.Status, &it.CarriedFrom, &it.DueDate, &it.Note, &it.ParentID)
 	return it, err
 }
 
@@ -104,8 +106,8 @@ func (s *Store) CarryOver(ctx context.Context, userID, from, to string) ([]Brain
 			WHERE user_id = $1 AND date = $2 AND status = 'open'
 			RETURNING *
 		)
-		INSERT INTO brain_dump_items (user_id, date, title, estimate_boxes, priority, category, status, carried_from, created_at)
-		SELECT user_id, $3, title, estimate_boxes, priority, category, 'open', COALESCE(carried_from, date), created_at
+		INSERT INTO brain_dump_items (user_id, date, title, estimate_boxes, priority, category, status, carried_from, created_at, due_date, parent_id)
+		SELECT user_id, $3, title, estimate_boxes, priority, category, 'open', COALESCE(carried_from, date), created_at, due_date, parent_id
 		FROM src
 		RETURNING `+brainDumpCols, userID, from, to)
 	if err != nil {
@@ -164,6 +166,9 @@ type BacklogItem struct {
 	DoneBoxes      int `json:"doneBoxes"`
 	// BlockCount is how many timetable blocks deleting the item would also delete.
 	BlockCount int `json:"blockCount"`
+	// Pieces are the day items it was split into (AI로 세분화); their blocks count above.
+	Pieces     int `json:"pieces"`
+	PiecesDone int `json:"piecesDone"`
 }
 
 // ListBacklog returns open backlog items plus the most recently finished ones.
@@ -172,9 +177,12 @@ func (s *Store) ListBacklog(ctx context.Context, userID string) ([]BacklogItem, 
 		SELECT `+prefixed("i.", brainDumpCols)+`,
 			COALESCE(SUM(b.end_slot - b.start_slot), 0)::int,
 			COALESCE(SUM(b.end_slot - b.start_slot) FILTER (WHERE b.done), 0)::int,
-			count(b.id)::int
+			count(b.id) FILTER (WHERE b.brain_dump_id = i.id)::int,
+			(SELECT count(*) FROM brain_dump_items c WHERE c.parent_id = i.id AND c.status <> 'carried')::int,
+			(SELECT count(*) FROM brain_dump_items c WHERE c.parent_id = i.id AND c.status = 'done')::int
 		FROM brain_dump_items i
-		LEFT JOIN time_blocks b ON b.brain_dump_id = i.id AND b.user_id = i.user_id
+		LEFT JOIN time_blocks b ON b.user_id = i.user_id
+		     AND (b.brain_dump_id = i.id OR b.brain_dump_id IN (SELECT c.id FROM brain_dump_items c WHERE c.parent_id = i.id))
 		WHERE i.user_id = $1 AND i.date IS NULL AND i.status IN ('open', 'done')
 		GROUP BY i.id
 		ORDER BY i.status, i.created_at
@@ -188,7 +196,7 @@ func (s *Store) ListBacklog(ctx context.Context, userID string) ([]BacklogItem, 
 	for rows.Next() {
 		var it BacklogItem
 		if err := rows.Scan(&it.ID, &it.Date, &it.Title, &it.EstimateBoxes, &it.Priority, &it.Category, &it.Status,
-			&it.CarriedFrom, &it.DueDate, &it.Note, &it.ScheduledBoxes, &it.DoneBoxes, &it.BlockCount); err != nil {
+			&it.CarriedFrom, &it.DueDate, &it.Note, &it.ParentID, &it.ScheduledBoxes, &it.DoneBoxes, &it.BlockCount, &it.Pieces, &it.PiecesDone); err != nil {
 			return nil, err
 		}
 		items = append(items, it)

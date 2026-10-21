@@ -246,6 +246,11 @@ function BrainDumpRow({ row, onDragItem, onPlace, onFocusBlock }: RowProps) {
             {unscheduled && (
               <span className="rounded-md border border-line-strong px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">미배정</span>
             )}
+            {item.parentId && !linked && (
+              <span title="보관함의 일을 AI로 나눈 조각이에요" className="rounded-md bg-ai-soft px-1.5 py-0.5 text-[11px] font-semibold text-ai-ink">
+                세분화
+              </span>
+            )}
             {linked && (
               <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[11px] font-semibold text-accent-ink">
                 {linked === 'backlog' ? '보관함' : `${shortDate(item.date!)} 할 일`}

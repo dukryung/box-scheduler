@@ -21,7 +21,7 @@ type ServiceAI struct {
 // Model is the model for a feature ("" when that feature is not offered).
 func (s ServiceAI) Model(feature string) string {
 	switch feature {
-	case "plan":
+	case "plan", "breakdown":
 		return s.PlanModel
 	case "request":
 		return s.RequestModel

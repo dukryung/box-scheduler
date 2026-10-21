@@ -25,6 +25,8 @@ export interface BrainDumpItem {
   carriedFrom: string | null
   dueDate: string | null
   note: string | null
+  /** The backlog item this is a piece of (AI로 세분화). */
+  parentId: string | null
 }
 
 /** A backlog item with its progress across every day it was scheduled on. */
@@ -33,6 +35,34 @@ export interface BacklogItem extends BrainDumpItem {
   doneBoxes: number
   /** Timetable blocks that deleting the item also deletes. */
   blockCount: number
+  /** Day items it was split into (AI로 세분화), and how many are done. */
+  pieces: number
+  piecesDone: number
+}
+
+export interface BreakdownSub {
+  title: string
+  boxes: number
+}
+
+/** A task's pieces spread over working days (server-side, from the policy below). */
+export interface BreakdownPlan {
+  days: { date: string; free: number; reserve: boolean; total: number; pieces: { sub: number; title: string; boxes: number }[] }[]
+  total: number
+  placed: number
+  shortage: number
+}
+
+export interface BreakdownPreview {
+  item: BrainDumpItem
+  subtasks: BreakdownSub[]
+  reasons?: string[]
+  notes?: string
+  plan: BreakdownPlan
+  period: { from: string; to: string; workingDays: number }
+  policy: { workStart: string; workEnd: string; lunchStart: string; lunchEnd: string; capacity: number; perTaskMax: number }
+  /** Earlier open, unplaced pieces in the period; applying with replace swaps them. */
+  existing: number
 }
 
 export interface Day {

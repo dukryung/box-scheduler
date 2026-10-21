@@ -108,7 +108,7 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(sameOrigin)
 			r.Use(a.requireUser)
-			r.Use(timeoutExcept(30*time.Second, "/ai-suggest", "/assistant/preview", "/assistant/tidy", "/ai/connections", "/test"))
+			r.Use(timeoutExcept(30*time.Second, "/ai-suggest", "/assistant/preview", "/assistant/tidy", "/ai/connections", "/test", "/breakdown"))
 
 			r.Get("/days/{date}", a.getDay)
 			r.Put("/days/{date}/note", a.putDayNote)
@@ -127,6 +127,9 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 
 			r.Get("/tasks", a.listTasks)
 			r.Post("/tasks", a.createTask)
+			r.Post("/tasks/{id}/breakdown", a.breakdownSuggest)
+			r.Post("/tasks/{id}/breakdown/allocate", a.breakdownAllocate)
+			r.Post("/tasks/{id}/breakdown/apply", a.breakdownApply)
 			r.Post("/brain-dump/{id}/move", a.moveBrainDump)
 			r.Post("/brain-dump", a.createBrainDump)
 			r.Patch("/brain-dump/{id}", a.updateBrainDump)
