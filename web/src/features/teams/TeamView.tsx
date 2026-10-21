@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { teamApi } from '../../api/client'
 import type { InviteResult, TeamDetail, TeamMember, TeamRole } from '../../api/types'
@@ -11,6 +11,7 @@ import { BottomTabs, TopBar, ViewSwitch } from '../nav/ViewSwitch'
 
 const ROLE_LABEL: Record<TeamRole, string> = { owner: 'owner', manager: '매니저', member: '일반' }
 const rank = (r: TeamRole) => ({ member: 1, manager: 2, owner: 3 })[r]
+const MAX_INVITES = 20
 const field = 'h-11 w-full rounded-[10px] border border-line-strong bg-surface px-3.5 text-[15px] text-ink outline-none focus:border-accent md:text-sm'
 
 function RoleBadge({ role }: { role: TeamRole }) {
@@ -131,7 +132,9 @@ export function TeamView() {
   const reloadTeams = useTeams((s) => s.load)
   const [team, setTeam] = useState<TeamDetail | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [emails, setEmails] = useState('')
+  const [emails, setEmails] = useState([''])
+  const emailInputs = useRef<(HTMLInputElement | null)[]>([])
+  const focusRow = useRef<number | null>(null)
   const [role, setRole] = useState<'manager' | 'member'>('member')
   const [results, setResults] = useState<InviteResult[]>([])
   const [sending, setSending] = useState(false)
@@ -153,19 +156,37 @@ export function TeamView() {
   useEffect(() => {
     void load()
   }, [load])
+  useEffect(() => {
+    if (focusRow.current === null) return
+    emailInputs.current[focusRow.current]?.focus()
+    focusRow.current = null
+  }, [emails])
 
   if (!team) return <div className="p-6 text-sm text-muted">{error ?? ''}</div>
   const canInvite = rank(team.role) >= 2
   const changed = (t?: TeamDetail) => (t ? setTeam(t) : void load())
 
+  const filled = emails.map((e) => e.trim()).filter(Boolean)
+  const setEmail = (i: number, v: string) => setEmails((list) => list.map((e, j) => (j === i ? v : e)))
+  const addRow = () => {
+    if (emails.length >= MAX_INVITES) return
+    focusRow.current = emails.length
+    setEmails((list) => [...list, ''])
+  }
+  const removeRow = (i: number) => {
+    focusRow.current = Math.max(0, i - 1)
+    setEmails((list) => list.filter((_, j) => j !== i))
+  }
+
   const sendInvites = async () => {
-    const list = emails.split(/[\s,;]+/).map((e) => e.trim()).filter(Boolean)
-    if (!list.length) return
+    if (!filled.length) return
     setSending(true)
     try {
-      const r = await teamApi.invite(team.id, list, role)
+      const r = await teamApi.invite(team.id, filled, role)
       setResults(r.results)
-      if (r.results.every((x) => x.ok)) setEmails('')
+      // Keep only the addresses that did not go through, so they can be fixed and sent again.
+      const failed = r.results.filter((x) => !x.ok).map((x) => x.email)
+      setEmails(failed.length ? failed : [''])
       await load()
     } catch (e) {
       setResults([{ email: '', ok: false, sent: false, error: (e as Error).message }])
@@ -190,16 +211,47 @@ export function TeamView() {
         {canInvite && (
           <Section title="이메일로 초대하기">
             {params.get('invite') && <p className="text-sm text-good">팀을 만들었어요. 함께할 사람을 초대해 보세요.</p>}
-            <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
-              이메일 (여러 명은 쉼표나 줄바꿈으로)
-              <textarea
-                rows={3}
-                value={emails}
-                onChange={(e) => setEmails(e.target.value)}
-                placeholder={'minji@example.com\nseojun@example.com'}
-                className="rounded-[10px] border border-line-strong bg-surface px-3.5 py-2.5 text-[15px] text-ink outline-none focus:border-accent md:text-sm"
-              />
-            </label>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="mb-1.5 text-sm font-medium text-ink-2">이메일</legend>
+              {emails.map((email, i) => (
+                <div key={i} className="flex gap-2">
+                  <input
+                    ref={(el) => {
+                      emailInputs.current[i] = el
+                    }}
+                    type="email"
+                    inputMode="email"
+                    autoComplete="off"
+                    aria-label={`초대할 이메일 ${i + 1}`}
+                    value={email}
+                    onChange={(e) => setEmail(i, e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
+                      e.preventDefault()
+                      if (i === emails.length - 1 && email.trim()) addRow()
+                      else emailInputs.current[i + 1]?.focus()
+                    }}
+                    placeholder={i === 0 ? 'minji@example.com' : 'name@example.com'}
+                    className={field}
+                  />
+                  {emails.length > 1 && (
+                    <button
+                      type="button"
+                      aria-label={`이메일 ${i + 1} 지우기`}
+                      onClick={() => removeRow(i)}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-line-strong text-lg text-muted hover:bg-subtle hover:text-ink"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+              {emails.length < MAX_INVITES && (
+                <button type="button" onClick={addRow} className="flex h-10 items-center justify-center gap-1 rounded-[10px] border border-dashed border-line-strong text-sm font-medium text-ink-2 hover:bg-subtle hover:text-ink">
+                  + 이메일 추가
+                </button>
+              )}
+            </fieldset>
             <div className="flex flex-wrap items-end gap-2">
               <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
                 역할
@@ -208,8 +260,8 @@ export function TeamView() {
                   <option value="manager">매니저 — 모든 업무와 담당자 관리, 초대</option>
                 </select>
               </label>
-              <button className={`${primaryButton} h-11`} disabled={sending || !emails.trim()} onClick={() => void sendInvites()}>
-                {sending ? '보내는 중…' : '초대 보내기'}
+              <button className={`${primaryButton} h-11`} disabled={sending || !filled.length} onClick={() => void sendInvites()}>
+                {sending ? '보내는 중…' : filled.length > 1 ? `${filled.length}명 초대 보내기` : '초대 보내기'}
               </button>
             </div>
             {!team.mailEnabled && <p className="text-xs text-muted">메일 발송이 아직 설정되지 않아, 초대하면 링크가 나와요. 링크를 직접 전달해 주세요.</p>}
