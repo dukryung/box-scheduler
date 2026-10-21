@@ -11,6 +11,8 @@ import type {
   Team,
   TeamDetail,
   TeamRole,
+  TeamTask,
+  TeamTaskInput,
   AssistantTurn,
   BacklogItem,
   Block,
@@ -128,6 +130,11 @@ export const teamApi = {
   inviteInfo: (token: string) => request<InviteInfo>(`/invites/${token}`),
   accept: (token: string) => request<{ teamId: string }>(`/invites/${token}/accept`, { method: 'POST' }),
   onboarded: () => request<void>('/auth/onboarded', { method: 'POST' }),
+  tasks: (id: string) => request<{ tasks: TeamTask[] }>(`/teams/${id}/tasks`),
+  createTask: (id: string, t: TeamTaskInput) => request<TeamTask>(`/teams/${id}/tasks`, post(t)),
+  updateTask: (id: string, taskId: string, t: TeamTaskInput) =>
+    request<TeamTask>(`/teams/${id}/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify(t) }),
+  deleteTask: (id: string, taskId: string) => request<void>(`/teams/${id}/tasks/${taskId}`, { method: 'DELETE' }),
 }
 
 export const aiApi = {

@@ -87,6 +87,7 @@ try {
   await m.waitForURL('**/invite/**')
   await m.getByRole('button', { name: /팀에 참여하기/ }).click()
   await m.waitForURL(`**/team/${teamId}`)
+  await m.getByRole('tab', { name: /멤버/ }).click()
   await m.getByRole('region', { name: /멤버 2/ }).waitFor()
   check(true, 'joined after sign-up and sees the team')
   const minjiMe = (await m.evaluate(() => fetch('/api/auth/me').then((r) => r.json())))
@@ -140,7 +141,7 @@ try {
   check((await call('GET', `/invites/${oldLink.split('/invite/')[1]}`)).body.status === 'revoked', 'a cancelled invite stops working')
 
   // 7. Owner: change role, switcher, transfer, leave, delete
-  await p.goto(`${BASE}/team/${teamId}`)
+  await p.goto(`${BASE}/team/${teamId}?tab=members`)
   await p.getByLabel(`${people.minji} 역할`).selectOption('manager')
   await p.waitForTimeout(400)
   check((await call('GET', `/teams/${teamId}`, null, lead.cookie)).body.memberList.find((x) => x.email === people.minji).role === 'manager', 'owner changed minji to manager')

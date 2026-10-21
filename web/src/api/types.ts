@@ -254,6 +254,46 @@ export interface TeamDetail extends Team {
   mailEnabled: boolean
 }
 
+export type TeamTaskStatus = 'todo' | 'doing' | 'done'
+
+export interface TaskAssignee {
+  userId: string
+  name: string
+  email: string
+  /** This person's share of the work, in 10-minute boxes. */
+  boxes: number | null
+}
+
+export interface TeamTask {
+  id: string
+  title: string
+  note: string
+  status: TeamTaskStatus
+  startDate: string | null
+  dueDate: string | null
+  estimateBoxes: number | null
+  createdBy: string
+  createdByName: string
+  createdAt: string
+  updatedAt: string
+  doneAt: string | null
+  assignees: TaskAssignee[]
+  /** What the signed-in person may do with it. */
+  canEdit: boolean
+  canSetStatus: boolean
+}
+
+/** Create sends every field; update sends only what changed ("" clears a date, 0 the estimate). */
+export interface TeamTaskInput {
+  title?: string
+  note?: string
+  status?: TeamTaskStatus
+  startDate?: string
+  dueDate?: string
+  estimateBoxes?: number
+  assignees?: { userId: string; boxes: number | null }[]
+}
+
 export interface InviteResult {
   email: string
   ok: boolean

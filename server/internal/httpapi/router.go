@@ -159,6 +159,10 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 			r.Patch("/teams/{teamID}/members/{userID}", a.updateMember)
 			r.Delete("/teams/{teamID}/members/{userID}", a.removeMember)
 			r.Post("/teams/{teamID}/transfer", a.transferTeam)
+			r.Get("/teams/{teamID}/tasks", a.listTeamTasks)
+			r.Post("/teams/{teamID}/tasks", a.createTeamTask)
+			r.Patch("/teams/{teamID}/tasks/{taskID}", a.updateTeamTask)
+			r.Delete("/teams/{teamID}/tasks/{taskID}", a.deleteTeamTask)
 			r.Post("/invites/{token}/accept", a.acceptInvite)
 
 			r.Get("/ai", a.aiState)
