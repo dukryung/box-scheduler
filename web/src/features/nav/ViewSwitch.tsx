@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import { useAuth } from '../../store/authStore'
 import { Logo, TabDay, TabMonth, TabStats, TabTasks } from '../../components/icons'
 import { ThemeToggle } from '../../components/ThemeToggle'
-import { monthOf } from '../../lib/date'
+import { monthOf, todayISO } from '../../lib/date'
 
 /** 'other' = a page outside the four views (설정); nothing is marked current. */
 export type View = 'day' | 'month' | 'tasks' | 'stats' | 'other'
@@ -71,10 +71,10 @@ export function BottomTabs({ view, date }: Props) {
 export function TopBar({ children, phoneTheme = false }: { children: ReactNode; phoneTheme?: boolean }) {
   return (
     <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line bg-surface px-4 py-3 md:px-6">
-      <div className="hidden items-center gap-2.5 md:flex">
+      <Link to={`/day/${todayISO()}`} aria-label="Box Scheduler 홈 (오늘)" title="오늘로 가기" className="hidden items-center gap-2.5 rounded-lg md:flex">
         <Logo />
         <span className="text-base font-bold tracking-tight">Box Scheduler</span>
-      </div>
+      </Link>
       {children}
       <ThemeToggle className={phoneTheme ? '' : 'max-md:hidden'} />
       <AccountButton className={phoneTheme ? '' : 'max-md:hidden'} />

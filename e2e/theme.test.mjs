@@ -1,4 +1,4 @@
-// Light / dark / system: the top-bar switch cycles, applies at once, and survives a reload.
+// Light / dark / system: the top-bar switch cycles, applies at once, and survives a reload; the logo goes home.
 import { checker, launch, BASE, watchErrors } from './lib.mjs'
 
 const { check, failed } = checker()
@@ -34,6 +34,13 @@ try {
   await page.waitForTimeout(100)
   check((await theme()) === 'dark', 'system mode tracks OS changes live')
   check((await page.locator('meta[name=theme-color]').getAttribute('content')) === '#1C1A18', 'browser bar color follows')
+
+  // The header logo goes home: today's timetable.
+  await page.getByRole('link', { name: /Box Scheduler 홈/ }).click()
+  await page.waitForURL('**/day/**')
+  const d = new Date()
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  check(page.url().endsWith(`/day/${today}`), `logo → today (${page.url()})`)
 
   const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   await phone.goto(`${BASE}/tasks`)
