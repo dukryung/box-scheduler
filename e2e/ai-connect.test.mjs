@@ -26,6 +26,7 @@ try {
 
   // 1. Service AI off and no key: AI features say so
   const u = await call('POST', '/auth/signup', { email: `ai-${tag}@e2e.test`, password: 'ai-pass-1234', name: '에이아이' })
+  await call('POST', '/auth/onboarded', null, u.cookie)
   cleanup.push(u.body.id)
   const as = (method, path, body) => call(method, path, body, u.cookie)
   check((await as('POST', '/assistant/tidy', { text: '음 회의 완료' })).body.code === 'ai_not_connected', 'no AI yet: refused with ai_not_connected')

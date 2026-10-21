@@ -184,6 +184,8 @@ export interface User {
   hasPassword: boolean
   /** A Google account is linked. */
   google: boolean
+  /** Chose personal or team use after signing up. */
+  onboarded: boolean
 }
 
 /** One of the account's own AIs; the key itself never comes back, only its last characters. */
@@ -214,4 +216,58 @@ export interface AIState {
   service: { enabled: boolean; models: Record<'plan' | 'request' | 'tidy', string>; dailyLimit: number; usedToday: number; unlimited: boolean }
   anthropicModels: string[]
   keysEnabled: boolean
+}
+
+export type TeamRole = 'owner' | 'manager' | 'member'
+
+export interface Team {
+  id: string
+  name: string
+  /** The signed-in person's role. */
+  role: TeamRole
+  members: number
+  createdAt: string
+}
+
+export interface TeamMember {
+  userId: string
+  email: string
+  name: string
+  role: TeamRole
+  joinedAt: string
+}
+
+export interface TeamInvite {
+  id: string
+  email: string
+  role: Exclude<TeamRole, 'owner'>
+  invitedBy: string
+  createdAt: string
+  expiresAt: string
+  sentAt: string | null
+}
+
+export interface TeamDetail extends Team {
+  memberList: TeamMember[]
+  /** Pending invites (managers and the owner only). */
+  invites: TeamInvite[]
+  mailEnabled: boolean
+}
+
+export interface InviteResult {
+  email: string
+  ok: boolean
+  sent: boolean
+  /** When no email went out: the link to pass on by hand. */
+  link?: string
+  error?: string
+}
+
+export interface InviteInfo {
+  teamId: string
+  team: string
+  email: string
+  role: Exclude<TeamRole, 'owner'>
+  invitedBy: string
+  status: 'pending' | 'accepted' | 'expired' | 'revoked'
 }

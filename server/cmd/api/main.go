@@ -17,6 +17,7 @@ import (
 	"box-scheduler/server/internal/ai"
 	"box-scheduler/server/internal/auth"
 	"box-scheduler/server/internal/httpapi"
+	"box-scheduler/server/internal/mail"
 	"box-scheduler/server/internal/netguard"
 	"box-scheduler/server/internal/secretbox"
 	"box-scheduler/server/internal/store"
@@ -69,6 +70,12 @@ func run() error {
 		return err
 	}
 	opts.NetPolicy = netguard.Parse(os.Getenv("AI_ALLOW_PRIVATE"))
+	opts.PublicURL = publicURL
+	opts.Mail = &mail.SMTP{
+		Host: os.Getenv("SMTP_HOST"), Port: envOr("SMTP_PORT", "587"),
+		User: os.Getenv("SMTP_USER"), Pass: os.Getenv("SMTP_PASS"), From: os.Getenv("MAIL_FROM"),
+	}
+	slog.Info("mail", "enabled", opts.Mail.Enabled(), "host", opts.Mail.Host)
 	slog.Info("ai connections", "keys", opts.SecretBox != nil, "allow_private", os.Getenv("AI_ALLOW_PRIVATE"))
 	slog.Info("google sign-in", "enabled", opts.Google.Enabled(), "redirect", opts.Google.RedirectURL)
 	needsSetup, err := st.OwnerNeedsSetup(ctx)

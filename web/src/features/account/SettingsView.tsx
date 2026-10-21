@@ -1,5 +1,5 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
-import { useSearchParams } from 'react-router'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { Link, useSearchParams } from 'react-router'
 import { authApi } from '../../api/client'
 import { card, primaryButton, secondaryButton } from '../../components/styles'
 import { ThemeToggle } from '../../components/ThemeToggle'
@@ -9,6 +9,7 @@ import { useGoogleEnabled } from '../auth/google'
 import { GoogleButton } from '../auth/GoogleButton'
 import { BottomTabs, TopBar, ViewSwitch } from '../nav/ViewSwitch'
 import { AIConnections } from './AIConnections'
+import { useTeams } from '../../store/teamsStore'
 
 const field = 'h-11 w-full rounded-[10px] border border-line-strong bg-surface px-3.5 text-[15px] text-ink outline-none focus:border-accent md:text-sm'
 
@@ -46,6 +47,10 @@ export function SettingsView() {
   const [googleNote, setGoogleNote] = useState<string | null>(null)
   const [params] = useSearchParams()
   const googleOn = useGoogleEnabled()
+  const { teams, loaded: teamsLoaded, load: loadTeams } = useTeams()
+  useEffect(() => {
+    if (!teamsLoaded) void loadTeams()
+  }, [teamsLoaded, loadTeams])
   const linked = params.get('google')
   if (!user) return null
 
@@ -123,6 +128,25 @@ export function SettingsView() {
             </div>
             <Note text={nameNote} />
           </form>
+        </Section>
+
+        <Section title="내 팀" aside={<Link to="/teams/new" className="text-sm font-semibold text-accent dark:text-accent-bright">+ 새 팀</Link>}>
+          {teams.length === 0 ? (
+            <p className="text-sm text-muted">아직 속한 팀이 없어요. 팀을 만들거나 초대 메일의 링크로 들어가요.</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-line">
+              {teams.map((t) => (
+                <li key={t.id}>
+                  <Link to={`/team/${t.id}`} className="flex items-center justify-between py-2.5 text-sm hover:text-accent">
+                    <span className="font-medium">{t.name}</span>
+                    <span className="text-xs text-muted">
+                      {{ owner: 'owner', manager: '매니저', member: '일반' }[t.role]} · {t.members}명
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
         </Section>
 
         <Section title="AI 연결">

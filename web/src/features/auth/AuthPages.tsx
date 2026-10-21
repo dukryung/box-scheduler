@@ -129,8 +129,9 @@ export function LoginPage() {
 }
 
 export function SignupPage() {
+  const [params] = useSearchParams()
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(params.get('email') ?? '')
   const [password, setPassword] = useState('')
   const { busy, error, onSubmit } = useSubmit(() => authApi.signup(email, password, name))
   const google = useGoogleEnabled()
@@ -150,7 +151,7 @@ export function SignupPage() {
       <OwnerSetupHint />
       {google && (
         <>
-          <GoogleButton href={authApi.googleStartURL({})} label="Google로 가입하기" />
+          <GoogleButton href={authApi.googleStartURL({ next: params.get('next') ?? undefined })} label="Google로 가입하기" />
           <Divider />
         </>
       )}

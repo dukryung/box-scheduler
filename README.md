@@ -116,6 +116,14 @@ Claude는 정해진 편집(블록 추가·이동·수정·삭제, Brain Dump 추
 - 키는 `AI_SECRET_KEY`(64자리 hex, `openssl rand -hex 32`)로 AES-256-GCM 암호화해 저장하고, 화면·API·콘솔 어디에도 다시 나오지 않는다(끝 4자리만).
 - 사용자가 자기 로컬 LLM 주소를 넣는 기능은 없앴다(서비스 AI로 대신). 남은 내부 주소 차단(`internal/netguard`, `AI_ALLOW_PRIVATE`)은 사용자 입력 주소에만 쓰인다.
 
+### 팀
+
+- 모든 계정에는 **내 공간**(개인 시간표·Brain Dump·보관함)이 있고, 팀은 그 위에 만들거나 초대받아 들어간다. 한 사람이 여러 팀에 속할 수 있고, 헤더의 공간 전환(내 공간 ▾)이나 설정 → 내 팀에서 오간다.
+- 새 계정은 처음 한 번 "혼자 쓸게요 / 팀을 만들게요 / 초대받았어요"를 고른다(`/welcome`). 초대로 들어오면 묻지 않는다.
+- 역할: **owner**(팀당 1명, 팀 이름·삭제, 역할 변경, owner 넘기기) · **매니저**(초대·초대 취소·다시 보내기, 일반 멤버 내보내기) · **일반**. 팀원이 아닌 사람에게는 팀이 있는지도 보이지 않는다(404). owner는 owner를 넘긴 뒤에만 나갈 수 있다.
+- **이메일 초대**: 여러 주소를 한 번에, 역할(매니저/일반)을 정해 보낸다. 링크는 7일, 한 번만 쓸 수 있고, **초대받은 이메일로 로그인(또는 가입, Google 포함)한 계정만** 수락할 수 있다. 다시 보내면 예전 링크는 더 이상 쓸 수 없다. 메일은 SMTP로 보낸다(`.env`의 `SMTP_HOST`·`SMTP_PORT`·`SMTP_USER`·`SMTP_PASS`·`MAIL_FROM`). 설정하기 전에는 초대 결과에 링크가 나와 직접 전달한다.
+- 팀 업무·담당자·팀 월간 일정·일별 배분은 다음 단계에서 팀 화면(`/team/{id}`)에 붙는다.
+
 ### 관리자 콘솔 (http://localhost:3090)
 
 - **관리자 계정은 화면에서 만들 수 없다.** 서버 명령으로만 만든다. 임시 비밀번호가 한 번 출력되고, 첫 로그인 때 12자 이상 새 비밀번호와 2단계 인증(TOTP: Google Authenticator, 1Password 등)을 설정해야 콘솔이 열린다.
@@ -159,7 +167,10 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | `/login`, `/signup` | 로그인, 가입 |
 | `/setup?token=…` | 첫 실행 때 소유자 계정 만들기 (서버 로그의 링크) |
 | `/reset?token=…` | 어드민이 발급한 링크로 비밀번호 다시 정하기 |
-| `/settings` | 내 계정, AI 연결, 화면 모드, 비밀번호, 로그아웃, 계정 삭제 |
+| `/settings` | 내 계정, 내 팀, AI 연결, 화면 모드, 비밀번호, 로그아웃, 계정 삭제 |
+| `/welcome` | 가입 후 한 번: 혼자 / 팀 만들기 / 초대받음 |
+| `/teams/new` · `/team/{id}` | 팀 만들기 · 팀 홈(멤버, 이메일 초대, 대기 중인 초대, 설정) |
+| `/invite/{token}` | 초대 메일의 링크: 가입·로그인 후 참여 |
 | `/` | 오늘 일간 화면으로 이동 (로그인 안 했으면 로그인으로) |
 
 ## 슬롯 규칙
@@ -178,6 +189,13 @@ cd web && npm install && npm run dev   # http://localhost:5173, /api는 :8080으
 | POST | `/api/auth/password` | 비밀번호 변경 `{current, new}` (다른 기기는 로그아웃) |
 | GET · POST | `/api/auth/setup` | 소유자 설정 필요 여부 · 설정 `{token, email, password, name}` |
 | POST | `/api/auth/reset` | 재설정 링크로 새 비밀번호 `{token, password}` |
+| GET · POST | `/api/teams` | 내 팀 목록 · 팀 만들기 `{name}` (만든 사람이 owner) |
+| GET · PATCH · DELETE | `/api/teams/{id}` | 팀 보기(멤버, 매니저 이상은 대기 중인 초대) · 이름 바꾸기 · 삭제 `{confirm: 팀 이름}` (owner) |
+| POST | `/api/teams/{id}/invites` · `/invites/{inviteId}/resend` | 이메일 초대 `{emails, role}` · 다시 보내기 (매니저 이상) |
+| DELETE | `/api/teams/{id}/invites/{inviteId}` | 초대 취소 (매니저 이상) |
+| PATCH · DELETE | `/api/teams/{id}/members/{userId}` | 역할 변경 (owner) · 내보내기/나가기 |
+| POST | `/api/teams/{id}/transfer` | owner 넘기기 `{userId}` |
+| GET · POST | `/api/invites/{token}` · `/api/invites/{token}/accept` | 초대 정보(로그인 없이) · 수락(초대받은 이메일 계정만) |
 | GET | `/api/auth/providers` | 켜진 로그인 방법 `{google}` |
 | GET | `/api/auth/google/start?next=&setup=&link=1` · `/api/auth/google/callback` | Google 로그인 시작(브라우저 이동) · Google에서 돌아오는 주소 |
 | POST | `/api/auth/google/unlink` | Google 연결 끊기 (비밀번호가 있을 때만) |

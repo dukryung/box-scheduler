@@ -44,7 +44,8 @@ try {
 
   const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
   await phone.goto(`${BASE}/tasks`)
-  check(await phone.getByRole('button', { name: /화면 모드/ }).isVisible(), 'phone: switch on the 보관함 screen')
+  const visible = await phone.getByRole('button', { name: /화면 모드/ }).waitFor({ timeout: 10_000 }).then(() => true, () => false)
+  check(visible, 'phone: switch on the 보관함 screen')
   await phone.close()
 
   check(errors.length === 0, `no console errors ${errors.join(' | ')}`)

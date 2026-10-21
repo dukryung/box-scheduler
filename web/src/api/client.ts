@@ -6,6 +6,11 @@ import type {
   AssistantPreview,
   BreakdownPreview,
   BreakdownSub,
+  InviteInfo,
+  InviteResult,
+  Team,
+  TeamDetail,
+  TeamRole,
   AssistantTurn,
   BacklogItem,
   Block,
@@ -105,6 +110,24 @@ export const breakdownApi = {
   suggest: (id: string, b: BreakdownBody, signal?: AbortSignal) => request<BreakdownPreview>(`/tasks/${id}/breakdown`, { ...post(b), signal }),
   allocate: (id: string, b: BreakdownBody) => request<BreakdownPreview>(`/tasks/${id}/breakdown/allocate`, post(b)),
   apply: (id: string, b: BreakdownBody) => request<{ created: number; removed: number; shortage: number }>(`/tasks/${id}/breakdown/apply`, post(b)),
+}
+
+export const teamApi = {
+  list: () => request<{ teams: Team[] }>('/teams'),
+  create: (name: string) => request<Team>('/teams', post({ name })),
+  get: (id: string) => request<TeamDetail>(`/teams/${id}`),
+  rename: (id: string, name: string) => request<TeamDetail>(`/teams/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  remove: (id: string, confirm: string) => request<void>(`/teams/${id}`, { method: 'DELETE', body: JSON.stringify({ confirm }) }),
+  invite: (id: string, emails: string[], role: Exclude<TeamRole, 'owner'>) => request<{ results: InviteResult[] }>(`/teams/${id}/invites`, post({ emails, role })),
+  resend: (id: string, inviteId: string) => request<InviteResult>(`/teams/${id}/invites/${inviteId}/resend`, { method: 'POST' }),
+  revoke: (id: string, inviteId: string) => request<void>(`/teams/${id}/invites/${inviteId}`, { method: 'DELETE' }),
+  setRole: (id: string, userId: string, role: Exclude<TeamRole, 'owner'>) =>
+    request<TeamDetail>(`/teams/${id}/members/${userId}`, { method: 'PATCH', body: JSON.stringify({ role }) }),
+  removeMember: (id: string, userId: string) => request<void>(`/teams/${id}/members/${userId}`, { method: 'DELETE' }),
+  transfer: (id: string, userId: string) => request<TeamDetail>(`/teams/${id}/transfer`, post({ userId })),
+  inviteInfo: (token: string) => request<InviteInfo>(`/invites/${token}`),
+  accept: (token: string) => request<{ teamId: string }>(`/invites/${token}/accept`, { method: 'POST' }),
+  onboarded: () => request<void>('/auth/onboarded', { method: 'POST' }),
 }
 
 export const aiApi = {

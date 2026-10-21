@@ -22,13 +22,15 @@ type User struct {
 	LastLoginAt *time.Time `json:"lastLoginAt"`
 	HasPassword bool       `json:"hasPassword"`
 	Google      bool       `json:"google"` // a Google account is linked
+	// Onboarded: chose personal or team use after signing up.
+	Onboarded bool `json:"onboarded"`
 }
 
-const userCols = `id, email, name, status, is_owner, created_at, last_login_at, password_hash IS NOT NULL, google_sub IS NOT NULL`
+const userCols = `id, email, name, status, is_owner, created_at, last_login_at, password_hash IS NOT NULL, google_sub IS NOT NULL, onboarded`
 
 func scanUser(row pgx.Row, extra ...any) (User, error) {
 	var u User
-	dest := append([]any{&u.ID, &u.Email, &u.Name, &u.Status, &u.IsOwner, &u.CreatedAt, &u.LastLoginAt, &u.HasPassword, &u.Google}, extra...)
+	dest := append([]any{&u.ID, &u.Email, &u.Name, &u.Status, &u.IsOwner, &u.CreatedAt, &u.LastLoginAt, &u.HasPassword, &u.Google, &u.Onboarded}, extra...)
 	err := row.Scan(dest...)
 	return u, mapErr(err)
 }
@@ -199,7 +201,7 @@ func (s *Store) SessionUser(ctx context.Context, tokenHash []byte, ttl time.Dura
 		    WHERE token_hash = $1 AND expires_at > now() AND last_seen_at < now() - interval '1 hour'
 		 )
 		 SELECT u.id, u.email, u.name, u.status, u.is_owner, u.created_at, u.last_login_at,
-		        u.password_hash IS NOT NULL, u.google_sub IS NOT NULL
+		        u.password_hash IS NOT NULL, u.google_sub IS NOT NULL, u.onboarded
 		   FROM sessions x JOIN users u ON u.id = x.user_id
 		  WHERE x.token_hash = $1 AND x.expires_at > now()`,
 		tokenHash, ttl.String()))

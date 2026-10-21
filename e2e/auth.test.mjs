@@ -13,6 +13,7 @@ const cleanup = []
 try {
   // 1. API: sign-up signs in; bad input and duplicates are refused
   const a = await call('POST', '/auth/signup', alice)
+  await call('POST', '/auth/onboarded', null, a.cookie)
   check(a.status === 201 && a.cookie && !a.body.isOwner && !('role' in a.body), 'sign-up creates a normal account and signs in')
   cleanup.push(a.body.id)
   check((await call('POST', '/auth/signup', { ...alice, email: alice.email.toUpperCase() })).status === 409, 'same email (any case) refused')
@@ -39,6 +40,7 @@ try {
 
   // 4. Accounts cannot see or touch each other's data
   const b = await call('POST', '/auth/signup', bob)
+  await call('POST', '/auth/onboarded', null, b.cookie)
   cleanup.push(b.body.id)
   const blk = await call('POST', '/blocks', { date: D, startSlot: 60, endSlot: 66, title: '앨리스 회의' }, a.cookie)
   check(blk.status === 201, 'alice makes a block')
@@ -113,8 +115,11 @@ try {
   await out.getByLabel('이메일').fill(carol)
   await out.getByLabel('비밀번호 (8자 이상)').fill('carol-pass-1')
   await out.getByRole('button', { name: '가입하기' }).click()
+  await out.waitForURL('**/welcome')
+  await out.getByRole('radio', { name: /혼자 쓸게요/ }).click()
+  await out.getByRole('button', { name: '시작하기' }).click()
   await out.waitForURL('**/day/**')
-  check(await out.locator('[title="12:00"]').isVisible(), 'sign-up lands on today’s timetable')
+  check(await out.locator('[title="12:00"]').isVisible(), 'sign-up asks personal/team once, then today’s timetable')
   const carolId = (await admin('GET', `/users?q=carol-${tag}`)).users[0]?.id
   if (carolId) cleanup.push(carolId)
   await out.close()

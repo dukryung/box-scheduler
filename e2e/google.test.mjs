@@ -25,9 +25,13 @@ try {
   const p = await signedOutPage()
   await p.goto(`${BASE}/month/2026-12`)
   await p.getByRole('link', { name: 'Google로 계속하기' }).click()
-  await p.waitForURL('**/month/2026-12')
+  await p.waitForURL('**/welcome')
   const gina = await me(p)
-  check(gina?.email === fake.next.email && gina.google && !gina.hasPassword && gina.name === 'gina', 'Google sign-up: account made, no password, back on the month page')
+  check(gina?.email === fake.next.email && gina.google && !gina.hasPassword && gina.name === 'gina', 'Google sign-up: account made, no password, asked how to use the app')
+  await p.getByRole('radio', { name: /혼자 쓸게요/ }).click()
+  await p.getByRole('button', { name: '시작하기' }).click()
+  await p.waitForURL('**/day/**')
+
   cleanup.push(gina.id)
 
   // 2. Signing in again finds the same account
@@ -56,6 +60,7 @@ try {
   // 4. Same email as a password account: not joined automatically
   const pat = { email: `pat-${tag}@gmail.test`, password: 'pat-pass-123', name: 'pat' }
   const patAcc = await call('POST', '/auth/signup', pat)
+  await call('POST', '/auth/onboarded', null, patAcc.cookie)
   cleanup.push(patAcc.body.id)
   fake.next = { sub: `sub-pat-${tag}`, email: pat.email, name: 'pat' }
   const q = await signedOutPage()
@@ -81,6 +86,7 @@ try {
 
   // 6. A Google account already linked elsewhere cannot be linked again
   const sam = await call('POST', '/auth/signup', { email: `sam-${tag}@e2e.test`, password: 'sam-pass-123' })
+  await call('POST', '/auth/onboarded', null, sam.cookie)
   cleanup.push(sam.body.id)
   const s = await browser.newPage({ viewport: { width: 1440, height: 900 }, signedOut: true })
   await s.context().addCookies([{ name: 'bs_session', value: sam.cookie, url: BASE }])
@@ -120,6 +126,9 @@ try {
   const d = await signedOutPage()
   await d.goto(`${BASE}/login`)
   await d.getByRole('link', { name: 'Google로 계속하기' }).click()
+  await d.waitForURL('**/welcome')
+  await d.getByRole('radio', { name: /혼자 쓸게요/ }).click()
+  await d.getByRole('button', { name: '시작하기' }).click()
   await d.waitForURL('**/day/**')
   const dora = await me(d)
   await d.goto(`${BASE}/settings`)

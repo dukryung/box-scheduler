@@ -54,6 +54,12 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_AUTH_URL: ${GOOGLE_AUTH_URL:-}
       GOOGLE_TOKEN_URL: ${GOOGLE_TOKEN_URL:-}
+      # Team invite emails over SMTP (e.g. Gmail: smtp.gmail.com, 587, an app password).
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-}
       LOGIN_LIMIT_PER_IP: ${LOGIN_LIMIT_PER_IP:-}
       SIGNUP_LIMIT_PER_IP: ${SIGNUP_LIMIT_PER_IP:-}
     extra_hosts:

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useAuth } from '../../store/authStore'
+import { SpaceSwitcher } from '../teams/SpaceSwitcher'
 import { Logo, TabDay, TabMonth, TabStats, TabTasks } from '../../components/icons'
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { monthOf, todayISO } from '../../lib/date'
@@ -75,6 +76,9 @@ export function TopBar({ children, phoneTheme = false }: { children: ReactNode; 
         <Logo />
         <span className="text-base font-bold tracking-tight">Box Scheduler</span>
       </Link>
+      <span className="hidden md:block">
+        <SpaceSwitcher />
+      </span>
       {children}
       <ThemeToggle className={phoneTheme ? '' : 'max-md:hidden'} />
       <AccountButton className={phoneTheme ? '' : 'max-md:hidden'} />

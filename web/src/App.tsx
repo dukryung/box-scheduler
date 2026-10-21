@@ -8,6 +8,10 @@ import { StatsView } from './features/stats/StatsView'
 import { TasksView } from './features/tasks/TasksView'
 import { isValidISODate, isValidMonth, todayISO } from './lib/date'
 import { useAuth } from './store/authStore'
+import { InvitePage } from './features/teams/InvitePage'
+import { NewTeamPage } from './features/teams/NewTeamPage'
+import { TeamView } from './features/teams/TeamView'
+import { WelcomePage } from './features/teams/WelcomePage'
 
 function DayRoute() {
   const { date = '' } = useParams()
@@ -25,14 +29,22 @@ function SignedIn() {
   const location = useLocation()
   if (user === undefined) return null
   if (user === null) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
+  // A new account chooses personal or team use first.
+  if (!user.onboarded && location.pathname !== '/welcome') return <Navigate to="/welcome" replace />
   return <Outlet />
 }
 
-/** 로그인·가입 pages: an already signed-in person goes straight to today. */
+/** 로그인·가입 pages: an already signed-in person goes on to ?next, or today. */
 function SignedOut() {
   const user = useAuth((s) => s.user)
+  const location = useLocation()
   if (user === undefined) return null
-  if (user) return <Navigate to={`/day/${todayISO()}`} replace />
+  if (user) {
+    // Signed in (or just signed up): go where the person was headed, e.g. back to an invite.
+    const next = new URLSearchParams(location.search).get('next')
+    const safe = next && next.startsWith('/') && !next.startsWith('//') ? next : `/day/${todayISO()}`
+    return <Navigate to={safe} replace />
+  }
   return <Outlet />
 }
 
@@ -51,12 +63,16 @@ export default function App() {
         </Route>
         <Route path="/setup" element={<SetupPage />} />
         <Route path="/reset" element={<ResetPage />} />
+        <Route path="/invite/:token" element={<InvitePage />} />
         <Route element={<SignedIn />}>
           <Route path="/day/:date" element={<DayRoute />} />
           <Route path="/month/:month" element={<MonthRoute />} />
           <Route path="/tasks" element={<TasksView />} />
           <Route path="/stats" element={<StatsView />} />
           <Route path="/settings" element={<SettingsView />} />
+          <Route path="/welcome" element={<WelcomePage />} />
+          <Route path="/teams/new" element={<NewTeamPage />} />
+          <Route path="/team/:teamId" element={<TeamView />} />
           <Route path="*" element={<Navigate to={`/day/${todayISO()}`} replace />} />
         </Route>
       </Routes>
