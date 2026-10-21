@@ -65,16 +65,16 @@ type chatResponse struct {
 }
 
 func (c *openAICaller) call(ctx context.Context, system, prompt string, schema map[string]any, out any) error {
-	if strings.Contains(strings.ToLower(c.Model), "qwen3") {
-		// Qwen3 thinks out loud by default; for short structured answers that only costs time.
-		prompt += " /no_think"
-	}
 	messages := []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": prompt}}
 	body := map[string]any{
 		"model":       c.Model,
 		"messages":    messages,
 		"temperature": 0.2,
 		"stream":      false,
+		// Reasoning models (Qwen3 and others) think at length by default, which on a
+		// small machine costs minutes; these answers are short and structured.
+		// Ollama honours this on its OpenAI endpoint ("/no_think" and "think" are ignored there).
+		"reasoning_effort": "none",
 		"response_format": map[string]any{
 			"type":        "json_schema",
 			"json_schema": map[string]any{"name": "answer", "strict": false, "schema": schema},
@@ -82,7 +82,9 @@ func (c *openAICaller) call(ctx context.Context, system, prompt string, schema m
 	}
 	data, status, err := c.post(ctx, "/chat/completions", body)
 	if err == nil && status == http.StatusBadRequest {
-		// Older servers: ask for plain JSON mode and describe the schema in the prompt.
+		// Servers that do not know these options: no reasoning setting, plain JSON
+		// mode, and the schema described in the prompt instead.
+		delete(body, "reasoning_effort")
 		schemaJSON, _ := json.Marshal(schema)
 		messages[0]["content"] = system + "\n\nAnswer with one JSON object only, matching this JSON schema:\n" + string(schemaJSON)
 		body["response_format"] = map[string]any{"type": "json_object"}

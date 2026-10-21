@@ -32,7 +32,7 @@ export function startFakeAI(port = 3198) {
       const schema = body.response_format?.json_schema?.schema
       const prompt = body.messages?.find((m) => m.role === 'user')?.content ?? ''
       if (body.model === 'slow:1b') await new Promise((r) => setTimeout(r, 2000))
-      let content = JSON.stringify(answer(schema, prompt.replace(/ \/no_think$/, ''), 'local'))
+      let content = JSON.stringify(answer(schema, prompt, 'local'))
       if (body.model.startsWith('qwen3')) content = `<think>생각 중</think>\n${content}`
       fake.calls.push({ who: 'local-done', model: body.model, auth: req.headers.authorization ?? '' })
       return json(200, { choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }] })

@@ -68,3 +68,22 @@ func TestUrgentBacklog(t *testing.T) {
 		t.Fatalf("urgent = %v", got)
 	}
 }
+
+func TestChunkTitleDropsRepeatedTask(t *testing.T) {
+	cases := map[string]string{
+		"초안 작성":             "기획서 · 초안 작성",
+		"기획서 · 초안 작성":       "기획서 · 초안 작성",
+		"기획서 · 기획서 · 초안 작성": "기획서 · 초안 작성",
+		"기획서 - 검토":          "기획서 · 검토",
+		"기획서":               "기획서",
+		"":                  "기획서",
+	}
+	for in, want := range cases {
+		if got := chunkTitle("기획서", in, 2); got != want {
+			t.Errorf("chunkTitle(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := chunkTitle("기획서", "초안 작성", 1); got != "기획서" {
+		t.Errorf("single chunk: %q", got)
+	}
+}

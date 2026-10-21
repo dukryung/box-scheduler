@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -15,11 +14,16 @@ func TestOpenAICallerStripsThinkingAndFallsBack(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
 		var body struct {
-			Messages       []map[string]string `json:"messages"`
-			ResponseFormat map[string]any      `json:"response_format"`
+			Messages        []map[string]string `json:"messages"`
+			ResponseFormat  map[string]any      `json:"response_format"`
+			ReasoningEffort *string             `json:"reasoning_effort"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&body)
-		prompts = append(prompts, body.Messages[1]["content"])
+		effort := "-"
+		if body.ReasoningEffort != nil {
+			effort = *body.ReasoningEffort
+		}
+		prompts = append(prompts, effort)
 		if body.ResponseFormat["type"] == "json_schema" {
 			w.WriteHeader(http.StatusBadRequest) // an older server
 			_, _ = w.Write([]byte(`{"error":{"message":"json_schema not supported"}}`))
@@ -35,7 +39,8 @@ func TestOpenAICallerStripsThinkingAndFallsBack(t *testing.T) {
 	if err != nil || got != "회의 완료" {
 		t.Fatalf("got %q %v", got, err)
 	}
-	if calls != 2 || !strings.HasSuffix(prompts[0], "/no_think") {
+	// First try: thinking off with a JSON schema; the retry drops both.
+	if calls != 2 || prompts[0] != "none" || prompts[1] != "-" {
 		t.Errorf("calls=%d prompts=%q", calls, prompts)
 	}
 }

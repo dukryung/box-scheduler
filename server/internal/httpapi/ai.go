@@ -257,9 +257,13 @@ func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput) ([]scheduler.Task, []
 }
 
 // chunkTitle keeps the task name on each piece of a split task ("기획서 · 초안 작성").
+// Models sometimes repeat the task name in the chunk ("기획서 · 기획서 · 초안"); it is dropped.
 func chunkTitle(task, chunk string, chunks int) string {
 	chunk = strings.TrimSpace(chunk)
-	if chunks <= 1 || chunk == "" || chunk == task {
+	for strings.HasPrefix(chunk, task) {
+		chunk = strings.TrimLeft(strings.TrimPrefix(chunk, task), " ·-–—:|/")
+	}
+	if chunks <= 1 || chunk == "" {
 		return task
 	}
 	return task + " · " + chunk
