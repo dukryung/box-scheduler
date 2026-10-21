@@ -54,7 +54,7 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_AUTH_URL: ${GOOGLE_AUTH_URL:-}
       GOOGLE_TOKEN_URL: ${GOOGLE_TOKEN_URL:-}
-      # Team invite emails over SMTP (e.g. Gmail: smtp.gmail.com, 587, an app password).
+      # Team invite emails over SMTP through a mail provider (e.g. Resend: smtp.resend.com, 587).
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
