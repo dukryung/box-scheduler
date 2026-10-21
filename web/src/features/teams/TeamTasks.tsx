@@ -6,6 +6,7 @@ import { Close, Plus } from '../../components/icons'
 import { card, doneStrike, primaryButton, secondaryButton } from '../../components/styles'
 import { todayISO } from '../../lib/date'
 import { formatDuration } from '../../lib/slots'
+import { STATUS_LABEL, STATUS_TONE, STATUSES, periodText } from '../../lib/teamTasks'
 import { useIsMobile } from '../../lib/useIsMobile'
 
 const field = 'h-11 w-full rounded-[10px] border border-line-strong bg-surface px-3.5 text-[15px] text-ink outline-none focus:border-accent disabled:opacity-60 md:text-sm'

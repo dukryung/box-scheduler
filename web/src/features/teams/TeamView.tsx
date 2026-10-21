@@ -8,6 +8,7 @@ import { todayISO } from '../../lib/date'
 import { useAuth } from '../../store/authStore'
 import { useTeams } from '../../store/teamsStore'
 import { BottomTabs, TopBar, ViewSwitch } from '../nav/ViewSwitch'
+import { TeamMonth } from './TeamMonth'
 import { TeamTasks } from './TeamTasks'
 
 const ROLE_LABEL: Record<TeamRole, string> = { owner: 'owner', manager: '매니저', member: '일반' }
@@ -128,7 +129,8 @@ function MemberRow({ m, team, meId, onChanged }: { m: TeamMember; team: TeamDeta
 export function TeamView() {
   const { teamId = '' } = useParams()
   const [params, setParams] = useSearchParams()
-  const tab = params.get('tab') === 'members' || params.get('invite') ? 'members' : 'tasks'
+  const asked = params.get('tab')
+  const tab = params.get('invite') || asked === 'members' ? 'members' : asked === 'month' ? 'month' : 'tasks'
   const navigate = useNavigate()
   const me = useAuth((s) => s.user)
   const reloadTeams = useTeams((s) => s.load)
@@ -207,11 +209,12 @@ export function TeamView() {
         </div>
       </TopBar>
 
-      <main className={`mx-auto flex w-full ${tab === 'tasks' ? 'max-w-[1080px]' : 'max-w-[760px]'} flex-col gap-3 px-4 pt-3 pb-[104px] md:gap-4 md:px-6 md:pt-6 md:pb-10`}>
+      <main className={`mx-auto flex w-full ${tab === 'members' ? 'max-w-[760px]' : tab === 'month' ? 'max-w-[1240px]' : 'max-w-[1080px]'} flex-col gap-3 px-4 pt-3 pb-[104px] md:gap-4 md:px-6 md:pt-6 md:pb-10`}>
         <nav role="tablist" aria-label="팀 화면" className="flex gap-1 border-b border-line">
           {(
             [
               ['tasks', '업무'],
+              ['month', '월간 일정'],
               ['members', `멤버 ${team.memberList.length}`],
             ] as const
           ).map(([k, label]) => (
@@ -228,6 +231,7 @@ export function TeamView() {
         </nav>
 
         {tab === 'tasks' && <TeamTasks team={team} meId={me?.id ?? ''} />}
+        {tab === 'month' && <TeamMonth team={team} meId={me?.id ?? ''} />}
 
         {tab === 'members' && canInvite && (
           <Section title="이메일로 초대하기">

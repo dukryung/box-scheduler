@@ -25,7 +25,7 @@ const who = (userId: string, boxes: number | null = null) => ({ userId, name: us
 describe('teamTasks', () => {
   it('lists the days of a month', () => {
     expect(monthDays('2026-02')).toHaveLength(28)
-    expect(monthDays('2026-10').at(-1)).toBe('2026-10-31')
+    expect(monthDays('2026-10')[30]).toBe('2026-10-31')
   })
 
   it('describes periods', () => {
