@@ -238,6 +238,7 @@ export function TeamMonth({ team, meId }: { team: TeamDetail; meId: string }) {
             setEditing(null)
             void load()
           }}
+          onChanged={() => void load()}
         />
       )}
     </section>

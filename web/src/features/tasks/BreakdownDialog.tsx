@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { breakdownApi } from '../../api/client'
+import { breakdownApi, type BreakdownCalls } from '../../api/client'
 import type { BacklogItem, BreakdownPreview, BreakdownSub } from '../../api/types'
 import { AIError } from '../../components/AIError'
 import { Close, Sparkle } from '../../components/icons'
@@ -9,10 +9,14 @@ import { formatDuration } from '../../lib/slots'
 import { useAIQueue } from '../../lib/useAIQueue'
 
 interface Props {
-  item: BacklogItem
+  item: Pick<BacklogItem, 'id' | 'title' | 'dueDate'>
   today: string
   onClose: () => void
-  onApplied: (message: string) => void
+  onApplied: (message: string, result: Awaited<ReturnType<BreakdownCalls['apply']>>) => void
+  /** Where the dialog sends its requests; a backlog item's own by default. */
+  calls?: BreakdownCalls
+  /** Shown under the title instead of the item's name (e.g. whose share it is). */
+  subtitle?: string
 }
 
 type Row = BreakdownSub & { on: boolean; reason?: string }
@@ -31,7 +35,8 @@ const dayLabel = (iso: string) => {
  * "AI로 세분화": the AI suggests the pieces; the server spreads them over working
  * days; the person edits, then adds each day's share to that day's Brain Dump.
  */
-export function BreakdownDialog({ item, today, onClose, onApplied }: Props) {
+export function BreakdownDialog({ item, today, onClose, onApplied, calls: given, subtitle }: Props) {
+  const [calls] = useState(() => given ?? breakdownApi.for(item.id))
   const [due, setDue] = useState(item.dueDate ?? '')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -50,7 +55,7 @@ export function BreakdownDialog({ item, today, onClose, onApplied }: Props) {
     setLoading(true)
     setError(null)
     try {
-      const p = await breakdownApi.suggest(item.id, body(), ctrl.signal)
+      const p = await calls.suggest(body(), ctrl.signal)
       setPreview(p)
       setRows(p.subtasks.map((s, i) => ({ ...s, on: true, reason: p.reasons?.[i] })))
     } catch (e) {
@@ -77,7 +82,7 @@ export function BreakdownDialog({ item, today, onClose, onApplied }: Props) {
       return
     }
     const t = setTimeout(() => {
-      breakdownApi.allocate(item.id, body(included)).then(
+      calls.allocate(body(included)).then(
         (p) => setPreview((prev) => (prev ? { ...prev, plan: p.plan } : prev)),
         (e: Error) => setError(e.message),
       )
@@ -101,8 +106,8 @@ export function BreakdownDialog({ item, today, onClose, onApplied }: Props) {
     setSaving(true)
     setError(null)
     try {
-      const r = await breakdownApi.apply(item.id, { ...body(included), replace })
-      onApplied(`‘${item.title}’을(를) ${usedDays.length}일에 ${r.created}개로 나눠 Brain Dump에 넣었어요${r.shortage ? ` · ${formatDuration(r.shortage)}은 기간 안에 못 넣었어요` : ''}`)
+      const r = await calls.apply({ ...body(included), replace })
+      onApplied(`‘${item.title}’을(를) ${usedDays.length}일에 ${r.created}개로 나눠 Brain Dump에 넣었어요${r.shortage ? ` · ${formatDuration(r.shortage)}은 기간 안에 못 넣었어요` : ''}`, r)
     } catch (e) {
       setError((e as Error).message)
       setSaving(false)
@@ -122,7 +127,7 @@ export function BreakdownDialog({ item, today, onClose, onApplied }: Props) {
           </span>
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold">AI 세분화</h2>
-            <p className="truncate text-xs text-muted">{item.title}</p>
+            <p className="truncate text-xs text-muted">{subtitle ?? item.title}</p>
           </div>
           <button onClick={onClose} aria-label="닫기" className="rounded-lg p-2 text-muted hover:bg-subtle">
             <Close size={18} />

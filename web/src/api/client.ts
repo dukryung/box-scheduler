@@ -106,12 +106,34 @@ export const authApi = {
   },
 }
 
-type BreakdownBody = { today: string; now: string; dueDate?: string; subtasks?: BreakdownSub[]; replace?: boolean }
+export type BreakdownBody = { today: string; now: string; dueDate?: string; subtasks?: BreakdownSub[]; replace?: boolean }
+
+/** The three calls behind the AI로 세분화 dialog, for a backlog item or a share of a team task. */
+export interface BreakdownCalls {
+  suggest: (b: BreakdownBody, signal?: AbortSignal) => Promise<BreakdownPreview>
+  allocate: (b: BreakdownBody) => Promise<BreakdownPreview>
+  apply: (b: BreakdownBody) => Promise<{ created: number; removed: number; shortage: number; task?: TeamTask }>
+}
 
 export const breakdownApi = {
   suggest: (id: string, b: BreakdownBody, signal?: AbortSignal) => request<BreakdownPreview>(`/tasks/${id}/breakdown`, { ...post(b), signal }),
   allocate: (id: string, b: BreakdownBody) => request<BreakdownPreview>(`/tasks/${id}/breakdown/allocate`, post(b)),
   apply: (id: string, b: BreakdownBody) => request<{ created: number; removed: number; shortage: number }>(`/tasks/${id}/breakdown/apply`, post(b)),
+  for: (id: string): BreakdownCalls => ({
+    suggest: (b, signal) => breakdownApi.suggest(id, b, signal),
+    allocate: (b) => breakdownApi.allocate(id, b),
+    apply: (b) => breakdownApi.apply(id, b),
+  }),
+}
+
+/** A team task's share for userId: pieces go to that person's Brain Dump. */
+export const teamBreakdown = (teamId: string, taskId: string, userId: string): BreakdownCalls => {
+  const path = `/teams/${teamId}/tasks/${taskId}/breakdown`
+  return {
+    suggest: (b, signal) => request<BreakdownPreview>(path, { ...post({ ...b, userId }), signal }),
+    allocate: (b) => request<BreakdownPreview>(`${path}/allocate`, post({ ...b, userId })),
+    apply: (b) => request<{ created: number; removed: number; shortage: number; task: TeamTask }>(`${path}/apply`, post({ ...b, userId })),
+  }
 }
 
 export const teamApi = {

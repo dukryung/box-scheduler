@@ -67,19 +67,27 @@ func (a *API) loadBreakdown(w http.ResponseWriter, r *http.Request, body breakdo
 		writeStoreError(w, err)
 		return item, nil, breakdownPeriod{}, 0, false
 	}
-	today, ok := parseDate(body.Today)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "today must be YYYY-MM-DD")
-		return item, nil, breakdownPeriod{}, 0, false
-	}
 	due := body.DueDate
 	if item.DueDate != nil {
 		due = *item.DueDate
 	}
+	days, period, existing, ok := a.breakdownDays(w, r, u.ID, body, due, item.ID)
+	return item, days, period, existing, ok
+}
+
+// breakdownDays lists userID's working days from today (or tomorrow, after
+// work) to due, with the time already taken on each. Open pieces of
+// exceptParent are not counted (splitting again replaces them); existing says how many there are.
+func (a *API) breakdownDays(w http.ResponseWriter, r *http.Request, userID string, body breakdownBody, due, exceptParent string) ([]breakdown.Day, breakdownPeriod, int, bool) {
+	today, ok := parseDate(body.Today)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "today must be YYYY-MM-DD")
+		return nil, breakdownPeriod{}, 0, false
+	}
 	dueDay, ok := parseDate(due)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "마감일을 정해 주세요")
-		return item, nil, breakdownPeriod{}, 0, false
+		return nil, breakdownPeriod{}, 0, false
 	}
 	p := breakdown.Default
 	nowSlot := -1
@@ -92,17 +100,17 @@ func (a *API) loadBreakdown(w http.ResponseWriter, r *http.Request, body breakdo
 	}
 	if dueDay.Before(start) {
 		writeError(w, http.StatusBadRequest, "마감일이 이미 지났어요. 마감일을 바꿔 주세요")
-		return item, nil, breakdownPeriod{}, 0, false
+		return nil, breakdownPeriod{}, 0, false
 	}
 	dates := breakdown.WorkingDays(start.Format(dateLayout), dueDay.Format(dateLayout))
 	if len(dates) == 0 {
 		writeError(w, http.StatusBadRequest, "기간 안에 근무일(월~금)이 없어요")
-		return item, nil, breakdownPeriod{}, 0, false
+		return nil, breakdownPeriod{}, 0, false
 	}
-	loads, err := a.store.DayLoads(r.Context(), u.ID, dates[0], dates[len(dates)-1], item.ID)
+	loads, err := a.store.DayLoads(r.Context(), userID, dates[0], dates[len(dates)-1], exceptParent)
 	if err != nil {
 		writeStoreError(w, err)
-		return item, nil, breakdownPeriod{}, 0, false
+		return nil, breakdownPeriod{}, 0, false
 	}
 	days := make([]breakdown.Day, len(dates))
 	existing := 0
@@ -119,7 +127,7 @@ func (a *API) loadBreakdown(w http.ResponseWriter, r *http.Request, body breakdo
 			days[i].Left = p.WorkingOverlap(nowSlot, p.WorkEnd)
 		}
 	}
-	return item, days, breakdownPeriod{From: dates[0], To: dates[len(dates)-1], WorkingDays: len(dates)}, existing, true
+	return days, breakdownPeriod{From: dates[0], To: dates[len(dates)-1], WorkingDays: len(dates)}, existing, true
 }
 
 // formatHours writes boxes as "20시간" or "1시간 30분".
@@ -174,10 +182,6 @@ func (a *API) breakdownSuggest(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	splitter, ok := a.aiFor(w, r, "breakdown")
-	if !ok {
-		return
-	}
 	total := 0
 	if item.EstimateBoxes != nil {
 		total = *item.EstimateBoxes
@@ -186,9 +190,26 @@ func (a *API) breakdownSuggest(w http.ResponseWriter, r *http.Request) {
 	if item.Note != nil {
 		note = *item.Note
 	}
+	subs, reasons, notes, ok := a.suggestSubs(w, r, item.Title, note, body.Today, period, total)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, breakdownResponse{
+		Item: item, Subtasks: subs, Reasons: reasons, Notes: notes,
+		Plan: breakdown.Allocate(subs, days, breakdown.Default), Period: period, Policy: policyView(), Existing: existing,
+	})
+}
+
+// suggestSubs asks the caller's AI for the pieces of a task to be done within
+// period, fitted to total (boxes) when that is known.
+func (a *API) suggestSubs(w http.ResponseWriter, r *http.Request, title, note, today string, period breakdownPeriod, total int) ([]breakdown.Sub, []string, string, bool) {
+	splitter, ok := a.aiFor(w, r, "breakdown")
+	if !ok {
+		return nil, nil, "", false
+	}
 	started := time.Now()
 	plan, err := splitter.Breakdown(r.Context(), ai.BreakdownRequest{
-		Title: item.Title, Note: note, Today: body.Today, DueDate: period.To, WorkingDays: period.WorkingDays,
+		Title: title, Note: note, Today: today, DueDate: period.To, WorkingDays: period.WorkingDays,
 		TotalBoxes: total, MaxPerDay: breakdown.Default.PerTaskMax,
 	})
 	if err != nil {
@@ -201,7 +222,7 @@ func (a *API) breakdownSuggest(w http.ResponseWriter, r *http.Request) {
 			slog.Error("breakdown failed", "err", err, "elapsed", time.Since(started))
 			writeError(w, http.StatusBadGateway, "AI 세분화를 받지 못했어요: "+aiErrorText(err))
 		}
-		return
+		return nil, nil, "", false
 	}
 	slog.Info("breakdown", "pieces", len(plan.Subtasks), "elapsed", time.Since(started))
 	raw := make([]breakdown.Sub, len(plan.Subtasks))
@@ -209,7 +230,7 @@ func (a *API) breakdownSuggest(w http.ResponseWriter, r *http.Request) {
 	for i, s := range plan.Subtasks {
 		raw[i] = breakdown.Sub{Title: s.Title, Boxes: s.Boxes}
 	}
-	subs := cleanSubs(item.Title, raw)
+	subs := cleanSubs(title, raw)
 	for _, s := range plan.Subtasks {
 		if strings.TrimSpace(s.Title) != "" && s.Boxes > 0 && len(reasons) < len(subs) {
 			reasons = append(reasons, strings.TrimSpace(s.Reason))
@@ -217,17 +238,25 @@ func (a *API) breakdownSuggest(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(subs) == 0 {
 		writeError(w, http.StatusBadGateway, "AI가 나눌 일을 제안하지 못했어요. 다시 해 주세요")
-		return
+		return nil, nil, "", false
 	}
 	notes := strings.TrimSpace(plan.Notes)
 	if scaled, changed := breakdown.ScaleTo(subs, total); changed {
 		subs = scaled
 		notes = strings.TrimSpace(notes + " (예상 시간 " + formatHours(total) + "에 맞춰 시간을 조정했어요.)")
 	}
-	writeJSON(w, http.StatusOK, breakdownResponse{
-		Item: item, Subtasks: subs, Reasons: reasons, Notes: notes,
-		Plan: breakdown.Allocate(subs, days, breakdown.Default), Period: period, Policy: policyView(), Existing: existing,
-	})
+	return subs, reasons, notes, true
+}
+
+// piecesFor lays out the plan's day pieces as Brain Dump items titled after the task.
+func piecesFor(title string, plan breakdown.Result) []store.NewPiece {
+	pieces := []store.NewPiece{}
+	for _, d := range plan.Days {
+		for _, p := range d.Pieces {
+			pieces = append(pieces, store.NewPiece{Date: d.Date, Title: chunkTitle(title, p.Title, 2), Boxes: p.Boxes})
+		}
+	}
+	return pieces
 }
 
 // breakdownAllocate re-spreads edited pieces (no AI), for the preview.
@@ -263,13 +292,8 @@ func (a *API) breakdownApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	plan := breakdown.Allocate(subs, days, breakdown.Default)
-	pieces := []store.NewPiece{}
+	pieces := piecesFor(item.Title, plan)
 	total := 0
-	for _, d := range plan.Days {
-		for _, p := range d.Pieces {
-			pieces = append(pieces, store.NewPiece{Date: d.Date, Title: chunkTitle(item.Title, p.Title, 2), Boxes: p.Boxes})
-		}
-	}
 	for _, s := range subs {
 		total += s.Boxes
 	}

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -31,6 +32,10 @@ type TaskAssignee struct {
 	Name   string `json:"name"`
 	Email  string `json:"email"`
 	Boxes  *int   `json:"boxes"`
+	// From the pieces in their Brain Dump once the task was split for them.
+	PlannedBoxes int  `json:"plannedBoxes"`
+	DoneBoxes    int  `json:"doneBoxes"`
+	Split        bool `json:"split"`
 }
 
 // TeamTaskFields are the editable parts of a team task.
@@ -107,9 +112,17 @@ func (s *Store) TeamTaskByID(ctx context.Context, teamID, taskID string) (TeamTa
 }
 
 func (s *Store) taskAssignees(ctx context.Context, where string, arg string) (map[string][]TaskAssignee, error) {
-	rows, err := s.pool.Query(ctx, `SELECT a.task_id::text, u.id::text, u.name, u.email, a.boxes
+	// Carried pieces live on as their copy on the next day; dropped ones are not work.
+	rows, err := s.pool.Query(ctx, `SELECT a.task_id::text, u.id::text, u.name, u.email, a.boxes,
+			COALESCE(pr.planned, 0), COALESCE(pr.done, 0), pr.linked IS NOT NULL
 		FROM team_task_assignees a JOIN users u ON u.id = a.user_id
 		JOIN team_members m ON m.team_id = a.team_id AND m.user_id = a.user_id
+		LEFT JOIN LATERAL (
+			SELECT p.id AS linked,
+				(SELECT SUM(c.estimate_boxes) FROM brain_dump_items c WHERE c.parent_id = p.id AND c.status IN ('open', 'scheduled', 'done'))::int AS planned,
+				(SELECT SUM(c.estimate_boxes) FROM brain_dump_items c WHERE c.parent_id = p.id AND c.status = 'done')::int AS done
+			FROM brain_dump_items p WHERE p.user_id = a.user_id AND p.team_task_id = a.task_id
+		) pr ON true
 		WHERE `+where+` ORDER BY m.joined_at`, arg)
 	if err != nil {
 		return nil, mapErr(err)
@@ -119,7 +132,7 @@ func (s *Store) taskAssignees(ctx context.Context, where string, arg string) (ma
 	for rows.Next() {
 		var taskID string
 		var a TaskAssignee
-		if err := rows.Scan(&taskID, &a.UserID, &a.Name, &a.Email, &a.Boxes); err != nil {
+		if err := rows.Scan(&taskID, &a.UserID, &a.Name, &a.Email, &a.Boxes, &a.PlannedBoxes, &a.DoneBoxes, &a.Split); err != nil {
 			return nil, err
 		}
 		out[taskID] = append(out[taskID], a)
@@ -185,4 +198,29 @@ func (s *Store) DeleteTeamTask(ctx context.Context, teamID, taskID string) error
 		return ErrNotFound
 	}
 	return mapErr(err)
+}
+
+// TeamTaskItem is the backlog item a team task became for userID when it was
+// split for them, or "" when it has not been.
+func (s *Store) TeamTaskItem(ctx context.Context, userID, taskID string) (string, error) {
+	var id string
+	err := s.pool.QueryRow(ctx, `SELECT id::text FROM brain_dump_items WHERE user_id = $1 AND team_task_id = $2`, userID, taskID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	return id, mapErr(err)
+}
+
+// LinkTeamTaskItem makes (or refreshes) the backlog item standing for userID's
+// share of a team task, so its split pieces have a parent; returns its id.
+func (s *Store) LinkTeamTaskItem(ctx context.Context, userID string, t TeamTask, share int) (string, error) {
+	var id string
+	err := s.pool.QueryRow(ctx, `
+		INSERT INTO brain_dump_items (user_id, date, title, estimate_boxes, status, due_date, note, team_task_id)
+		VALUES ($1, NULL, $2, NULLIF($3, 0), 'open', $4::date, NULLIF($5, ''), $6)
+		ON CONFLICT (user_id, team_task_id) WHERE team_task_id IS NOT NULL DO UPDATE SET
+			title = EXCLUDED.title, estimate_boxes = EXCLUDED.estimate_boxes, due_date = EXCLUDED.due_date, date = NULL,
+			status = CASE WHEN brain_dump_items.status IN ('open', 'done') THEN 'open' ELSE brain_dump_items.status END
+		RETURNING id::text`, userID, t.Title, share, t.DueDate, t.Note, t.ID).Scan(&id)
+	return id, mapErr(err)
 }

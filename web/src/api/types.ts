@@ -262,6 +262,10 @@ export interface TaskAssignee {
   email: string
   /** This person's share of the work, in 10-minute boxes. */
   boxes: number | null
+  /** Once split for them (AI로 세분화): the pieces in their Brain Dump, and how much of it is done. */
+  split: boolean
+  plannedBoxes: number
+  doneBoxes: number
 }
 
 export interface TeamTask {
