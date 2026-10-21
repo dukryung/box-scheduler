@@ -16,6 +16,7 @@ import (
 	"box-scheduler/server/internal/auth"
 	"box-scheduler/server/internal/mail"
 	"box-scheduler/server/internal/netguard"
+	"box-scheduler/server/internal/notify"
 	"box-scheduler/server/internal/secretbox"
 	"box-scheduler/server/internal/store"
 )
@@ -41,6 +42,8 @@ type Options struct {
 	PublicURL string
 	// Google is the "Google로 계속하기" client; nil or without credentials hides it.
 	Google *auth.Google
+	// Notify records notifications and sends them as Web Push (nil: none).
+	Notify *notify.Notifier
 	// SecretBox seals accounts' API keys (nil: keys cannot be saved).
 	SecretBox *secretbox.Box
 	// NetPolicy decides which internal addresses local LLM connections may reach.
@@ -148,6 +151,13 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 			r.Post("/auth/google/unlink", a.googleUnlink)
 
 			r.Post("/auth/onboarded", a.finishOnboarding)
+			r.Get("/notifications", a.listNotifications)
+			r.Post("/notifications/read", a.readNotifications)
+			r.Put("/notifications/settings", a.updateNotifySettings)
+			r.Get("/push/key", a.pushKey)
+			r.Post("/push/subscriptions", a.subscribePush)
+			r.Delete("/push/subscriptions", a.unsubscribePush)
+			r.Post("/push/test", a.testPush)
 			r.Get("/teams", a.listTeams)
 			r.Post("/teams", a.createTeam)
 			r.Get("/teams/{teamID}", a.getTeam)

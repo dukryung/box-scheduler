@@ -19,6 +19,7 @@ import (
 	"box-scheduler/server/internal/httpapi"
 	"box-scheduler/server/internal/mail"
 	"box-scheduler/server/internal/netguard"
+	"box-scheduler/server/internal/notify"
 	"box-scheduler/server/internal/secretbox"
 	"box-scheduler/server/internal/store"
 )
@@ -76,6 +77,17 @@ func run() error {
 		User: os.Getenv("SMTP_USER"), Pass: os.Getenv("SMTP_PASS"), From: os.Getenv("MAIL_FROM"),
 	}
 	slog.Info("mail", "enabled", opts.Mail.Enabled(), "host", opts.Mail.Host)
+	// Web Push: the subject names who sends (an https site or a mailto address).
+	subject := envOr("PUSH_SUBJECT", "mailto:noreply@box-scheduler.com")
+	if opts.Notify, err = notify.New(ctx, st, opts.SecretBox, subject, os.Getenv("PUSH_ALLOW_HOSTS")); err != nil {
+		return err
+	}
+	every, err := time.ParseDuration(envOr("REMINDER_EVERY", "30s"))
+	if err != nil {
+		return err
+	}
+	go opts.Notify.RunReminders(ctx, every, 10*time.Minute)
+	slog.Info("notifications", "push", opts.Notify.PushEnabled(), "reminders_every", every)
 	slog.Info("ai connections", "keys", opts.SecretBox != nil, "allow_private", os.Getenv("AI_ALLOW_PRIVATE"))
 	slog.Info("google sign-in", "enabled", opts.Google.Enabled(), "redirect", opts.Google.RedirectURL)
 	needsSetup, err := st.OwnerNeedsSetup(ctx)

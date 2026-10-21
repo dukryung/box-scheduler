@@ -1,5 +1,7 @@
 import type {
   AIConnection,
+  AppNotification,
+  NotifySettings,
   AISettings,
   AIState,
   AssistantOp,
@@ -215,4 +217,14 @@ export const api = {
         estimates,
       }),
     }),
+}
+
+export const notifyApi = {
+  list: () => request<{ items: AppNotification[]; unread: number; settings: NotifySettings }>('/notifications'),
+  read: (ids?: string[]) => request<void>('/notifications/read', post({ ids: ids ?? [] })),
+  settings: (s: NotifySettings) => request<NotifySettings>('/notifications/settings', { method: 'PUT', body: JSON.stringify(s) }),
+  pushKey: () => request<{ enabled: boolean; publicKey?: string }>('/push/key'),
+  subscribe: (sub: PushSubscriptionJSON, timezone: string) => request<void>('/push/subscriptions', post({ endpoint: sub.endpoint, keys: sub.keys, timezone })),
+  unsubscribe: (endpoint: string) => request<void>('/push/subscriptions', { method: 'DELETE', body: JSON.stringify({ endpoint }) }),
+  test: () => request<AppNotification>('/push/test', { method: 'POST' }),
 }

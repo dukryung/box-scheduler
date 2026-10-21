@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useAuth } from '../../store/authStore'
+import { NotificationBell } from '../notify/NotificationBell'
 import { SpaceSwitcher } from '../teams/SpaceSwitcher'
 import { Logo, TabDay, TabMonth, TabStats, TabTasks } from '../../components/icons'
 import { ThemeToggle } from '../../components/ThemeToggle'
@@ -80,6 +81,7 @@ export function TopBar({ children, phoneTheme = false }: { children: ReactNode; 
         <SpaceSwitcher />
       </span>
       {children}
+      <NotificationBell />
       <ThemeToggle className={phoneTheme ? '' : 'max-md:hidden'} />
       <AccountButton className={phoneTheme ? '' : 'max-md:hidden'} />
     </header>

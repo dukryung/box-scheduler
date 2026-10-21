@@ -60,6 +60,10 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       MAIL_FROM: ${MAIL_FROM:-}
+      # Notifications: Web Push keys are made on first start (needs AI_SECRET_KEY to seal them).
+      PUSH_SUBJECT: ${PUSH_SUBJECT:-mailto:noreply@box-scheduler.com}
+      PUSH_ALLOW_HOSTS: ${PUSH_ALLOW_HOSTS:-}
+      REMINDER_EVERY: ${REMINDER_EVERY:-30s}
       LOGIN_LIMIT_PER_IP: ${LOGIN_LIMIT_PER_IP:-}
       SIGNUP_LIMIT_PER_IP: ${SIGNUP_LIMIT_PER_IP:-}
     extra_hosts:

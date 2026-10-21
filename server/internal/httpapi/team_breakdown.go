@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -170,6 +172,21 @@ func (a *API) teamBreakdownApply(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeStoreError(w, err)
 		return
+	}
+	if me := currentUser(r); tb.userID != me.ID && created > 0 {
+		first := ""
+		for _, d := range plan.Days {
+			if len(d.Pieces) > 0 {
+				first = d.Date
+				break
+			}
+		}
+		a.notifyTeam(r.Context(), tb.userID, store.Notification{
+			Kind:  "split",
+			Title: fmt.Sprintf("‘%s’ 내 몫이 Brain Dump에 들어갔어요", tb.task.Title),
+			Body:  fmt.Sprintf("%s 님이 AI로 세분화 · %d개, %s부터", displayName(me.Name, me.Email), created, strings.TrimLeft(first[5:7], "0")+"/"+strings.TrimLeft(first[8:10], "0")),
+			Link:  "/day/" + first,
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"created": created, "removed": removed, "shortage": plan.Shortage, "plan": plan,

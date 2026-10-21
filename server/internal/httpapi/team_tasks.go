@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -197,6 +198,7 @@ func (a *API) createTeamTask(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	a.notifyAssigned(r, teamID, store.TeamTask{}, t)
 	writeJSON(w, http.StatusCreated, withPermissions(role, me, t))
 }
 
@@ -263,6 +265,7 @@ func (a *API) updateTeamTask(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	a.notifyAssigned(r, teamID, cur, t)
 	writeJSON(w, http.StatusOK, withPermissions(role, me, t))
 }
 
@@ -285,4 +288,49 @@ func (a *API) deleteTeamTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// notifyAssigned tells people newly put on a task by someone else.
+func (a *API) notifyAssigned(r *http.Request, teamID string, before, after store.TeamTask) {
+	me := currentUser(r)
+	var team store.Team
+	for _, x := range after.Assignees {
+		if x.UserID == me.ID || isAssigned(x.UserID, before) {
+			continue
+		}
+		if team.ID == "" {
+			var err error
+			if team, err = a.store.TeamByID(r.Context(), teamID, me.ID); err != nil {
+				return
+			}
+		}
+		period := ""
+		if p := periodLabel(after); p != "" {
+			period = " · " + p
+		}
+		a.notifyTeam(r.Context(), x.UserID, store.Notification{
+			Kind:  "assigned",
+			Title: fmt.Sprintf("‘%s’ 담당자가 됐어요", after.Title),
+			Body:  fmt.Sprintf("%s · %s 님이 지정%s%s", team.Name, displayName(me.Name, me.Email), period, shareText(x.Boxes)),
+			Link:  "/team/" + teamID,
+		})
+	}
+}
+
+func periodLabel(t store.TeamTask) string {
+	md := func(iso string) string { return strings.TrimLeft(iso[5:7], "0") + "/" + strings.TrimLeft(iso[8:10], "0") }
+	switch {
+	case t.StartDate != nil && t.DueDate != nil:
+		return md(*t.StartDate) + "~" + md(*t.DueDate)
+	case t.DueDate != nil:
+		return "~" + md(*t.DueDate)
+	}
+	return ""
+}
+
+func displayName(name, email string) string {
+	if name != "" {
+		return name
+	}
+	return strings.SplitN(email, "@", 2)[0]
 }

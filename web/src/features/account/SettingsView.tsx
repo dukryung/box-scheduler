@@ -9,6 +9,7 @@ import { useGoogleEnabled } from '../auth/google'
 import { GoogleButton } from '../auth/GoogleButton'
 import { BottomTabs, TopBar, ViewSwitch } from '../nav/ViewSwitch'
 import { AIConnections } from './AIConnections'
+import { NotifySettings } from '../notify/NotifySettings'
 import { useTeams } from '../../store/teamsStore'
 
 const field = 'h-11 w-full rounded-[10px] border border-line-strong bg-surface px-3.5 text-[15px] text-ink outline-none focus:border-accent md:text-sm'
@@ -148,6 +149,12 @@ export function SettingsView() {
             </ul>
           )}
         </Section>
+
+        <div id="notifications" className="scroll-mt-20">
+          <Section title="알림">
+            <NotifySettings />
+          </Section>
+        </div>
 
         <Section title="AI 연결">
           <AIConnections />

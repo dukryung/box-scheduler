@@ -315,3 +315,22 @@ export interface InviteInfo {
   invitedBy: string
   status: 'pending' | 'accepted' | 'expired' | 'revoked'
 }
+
+export interface AppNotification {
+  id: string
+  kind: 'assigned' | 'split' | 'reminder' | 'test'
+  title: string
+  body: string
+  /** In-app path to open, e.g. /day/2026-10-21. */
+  link: string
+  createdAt: string
+  readAt: string | null
+}
+
+export interface NotifySettings {
+  /** 10 minutes before each timetable block. */
+  reminders: boolean
+  /** Assigned to a team task, or a share split by someone else. */
+  team: boolean
+  timezone: string
+}
