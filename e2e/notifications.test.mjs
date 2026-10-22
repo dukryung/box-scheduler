@@ -158,6 +158,30 @@ try {
   await toast.waitFor()
   check(true, 'a new notification shows as a toast in the open page')
 
+  // A reminder while the page is open: pops up bottom-right by itself, then closes; hovering keeps it
+  if (now.getHours() * 6 + Math.floor(now.getMinutes() / 10) < 138) {
+    const slot = await nextSlot()
+    const b = (await M('POST', '/blocks', { date, startSlot: slot, endSlot: slot + 1, title: '토스트 회의' })).body
+    const rt = p.getByRole('region', { name: '새 알림' }).getByRole('status').filter({ hasText: '분 뒤 시작: 토스트 회의' })
+    await rt.waitFor({ timeout: 25000 })
+    const box = await rt.boundingBox()
+    check(box.x > 1440 / 2 && box.y > 900 / 2 && (await rt.textContent()).includes('시간표 열기'), 'reminder toast pops up in the bottom-right corner on its own')
+    check(await p.getByRole('button', { name: /^알림 \d+개 안 읽음$/ }).isVisible(), 'and it is in the bell too')
+    await rt.hover()
+    await p.waitForTimeout(13000)
+    check(await rt.isVisible(), 'hovering keeps it up')
+    await p.mouse.move(10, 10)
+    await rt.waitFor({ state: 'detached', timeout: 14000 })
+    check(true, 'it closes by itself')
+    await M('DELETE', `/blocks/${b.id}`)
+  }
+  await M('POST', '/push/test')
+  await p.evaluate(() => window.dispatchEvent(new Event('focus')))
+  const tt = p.getByRole('region', { name: '새 알림' }).getByRole('status').filter({ hasText: '알림이 잘 와요' })
+  await tt.getByRole('button', { name: /알림이 잘 와요/ }).click()
+  await p.waitForURL('**/settings')
+  check((await tt.count()) === 0, 'clicking a toast opens its page and closes it')
+
   // 7. Settings
   await p.goto(`${BASE}/settings#notifications`)
   const sec = p.getByRole('region', { name: '알림' })

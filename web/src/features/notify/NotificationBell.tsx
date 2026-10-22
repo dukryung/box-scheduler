@@ -2,10 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import type { AppNotification } from '../../api/types'
 import { Bell } from '../../components/icons'
-import { refreshPush } from '../../lib/push'
 import { useNotifications } from '../../store/notificationsStore'
-
-const POLL_MS = 60_000
 
 function ago(iso: string): string {
   const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000)
@@ -16,45 +13,13 @@ function ago(iso: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`
 }
 
-/** 🔔 in the header: unread count, the latest notifications, and a toast for new ones while the app is open. */
+/** 🔔 in the header: unread count and the latest notifications (kept fresh by the Toaster). */
 export function NotificationBell() {
   const { items, unread, load, read } = useNotifications()
   const [open, setOpen] = useState(false)
-  const [toast, setToast] = useState<AppNotification | null>(null)
   const ref = useRef<HTMLDivElement>(null)
-  const newest = useRef<string | null>(null)
   const navigate = useNavigate()
   const location = useLocation()
-
-  useEffect(() => {
-    void refreshPush()
-  }, [])
-  useEffect(() => {
-    void load()
-    const t = setInterval(() => document.visibilityState === 'visible' && void load(), POLL_MS)
-    const onFocus = () => void load()
-    const onMessage = (e: MessageEvent) => e.data?.type === 'notification' && void load()
-    window.addEventListener('focus', onFocus)
-    navigator.serviceWorker?.addEventListener('message', onMessage)
-    return () => {
-      clearInterval(t)
-      window.removeEventListener('focus', onFocus)
-      navigator.serviceWorker?.removeEventListener('message', onMessage)
-    }
-  }, [load])
-
-  // Something new since the last look: without browser notifications, say so in the page.
-  useEffect(() => {
-    const top = items[0]
-    if (!top) return
-    if (newest.current !== null && top.createdAt > newest.current && !top.readAt && !('Notification' in window && Notification.permission === 'granted')) setToast(top)
-    if (newest.current === null || top.createdAt > newest.current) newest.current = top.createdAt
-  }, [items])
-  useEffect(() => {
-    if (!toast) return
-    const t = setTimeout(() => setToast(null), 8000)
-    return () => clearTimeout(t)
-  }, [toast])
 
   useEffect(() => setOpen(false), [location.pathname])
   useEffect(() => {
@@ -71,11 +36,9 @@ export function NotificationBell() {
 
   const go = (n: AppNotification) => {
     setOpen(false)
-    setToast(null)
     if (!n.readAt) void read([n.id])
     if (n.link) navigate(n.link)
   }
-
   return (
     <div ref={ref} className="relative">
       <button
@@ -136,17 +99,6 @@ export function NotificationBell() {
         </section>
       )}
 
-      {toast && (
-        <div role="status" className="fixed right-4 bottom-24 left-4 z-50 flex items-start gap-3 rounded-xl border border-line bg-surface p-3.5 shadow-lg md:right-6 md:bottom-6 md:left-auto md:w-96">
-          <button onClick={() => go(toast)} className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
-            <span className="text-sm font-semibold">{toast.title}</span>
-            {toast.body && <span className="text-xs text-muted">{toast.body}</span>}
-          </button>
-          <button aria-label="알림 닫기" onClick={() => setToast(null)} className="text-muted hover:text-ink">
-            ×
-          </button>
-        </div>
-      )}
     </div>
   )
 }

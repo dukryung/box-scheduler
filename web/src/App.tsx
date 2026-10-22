@@ -7,6 +7,7 @@ import { MonthView } from './features/month/MonthView'
 import { StatsView } from './features/stats/StatsView'
 import { TasksView } from './features/tasks/TasksView'
 import { isValidISODate, isValidMonth, todayISO } from './lib/date'
+import { Toaster } from './features/notify/Toaster'
 import { useAuth } from './store/authStore'
 import { InvitePage } from './features/teams/InvitePage'
 import { NewTeamPage } from './features/teams/NewTeamPage'
@@ -31,7 +32,12 @@ function SignedIn() {
   if (user === null) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname + location.search)}`} replace />
   // A new account chooses personal or team use first.
   if (!user.onboarded && location.pathname !== '/welcome') return <Navigate to="/welcome" replace />
-  return <Outlet />
+  return (
+    <>
+      <Outlet />
+      <Toaster />
+    </>
+  )
 }
 
 /** 로그인·가입 pages: an already signed-in person goes on to ?next, or today. */
