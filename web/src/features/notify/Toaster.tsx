@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import type { AppNotification } from '../../api/types'
 import { Bell, Close } from '../../components/icons'
+import { chime, unlockSound } from '../../lib/chime'
 import { refreshPush } from '../../lib/push'
 import { useNotifications } from '../../store/notificationsStore'
 
@@ -12,6 +13,26 @@ const SHOW_MS = { reminder: 12_000, other: 8_000 }
 /** Keeps the notifications fresh for the whole app and pops new ones up in the bottom-right corner. */
 export function Toaster() {
   const { toasts, load } = useNotifications()
+  const rung = useRef(new Set<string>())
+
+  // A chime for each batch of new toasts (the reminder tune if one is a reminder).
+  useEffect(() => {
+    const fresh = toasts.filter((t) => !rung.current.has(t.id))
+    if (!fresh.length) return
+    fresh.forEach((t) => rung.current.add(t.id))
+    chime(fresh.some((t) => t.kind === 'reminder') ? 'reminder' : 'other')
+  }, [toasts])
+
+  // Sound may only start after a click or key press on the page.
+  useEffect(() => {
+    const unlock = () => unlockSound()
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('keydown', unlock)
+    return () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
+    }
+  }, [])
 
   useEffect(() => {
     void refreshPush()

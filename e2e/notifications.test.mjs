@@ -148,7 +148,9 @@ try {
   await p.getByRole('button', { name: /^알림 \d+개 안 읽음$/ }).click()
   await p.getByRole('dialog', { name: '알림 목록' }).getByRole('button', { name: '모두 읽음' }).click()
   await p.getByRole('button', { name: '알림', exact: true }).waitFor()
-  check((await M('GET', '/notifications')).body.unread === 0, '모두 읽음 clears the count')
+  let left = -1
+  for (let i = 0; i < 20 && left !== 0; i++, await sleep(100)) left = (await M('GET', '/notifications')).body.unread
+  check(left === 0, '모두 읽음 clears the count')
   await p.keyboard.press('Escape')
 
   // A new one while the page is open (no browser permission): shown in the page
@@ -159,6 +161,12 @@ try {
   check(true, 'a new notification shows as a toast in the open page')
 
   // A reminder while the page is open: pops up bottom-right by itself, then closes; hovering keeps it
+  const listenChimes = () => p.evaluate(() => {
+    window.__chimes = []
+    window.addEventListener('bs:chime', (e) => window.__chimes.push(e.detail))
+  })
+  const chimes = () => p.evaluate(() => window.__chimes)
+  await listenChimes()
   if (now.getHours() * 6 + Math.floor(now.getMinutes() / 10) < 138) {
     const slot = await nextSlot()
     const b = (await M('POST', '/blocks', { date, startSlot: slot, endSlot: slot + 1, title: '토스트 회의' })).body
@@ -167,6 +175,7 @@ try {
     const box = await rt.boundingBox()
     check(box.x > 1440 / 2 && box.y > 900 / 2 && (await rt.textContent()).includes('시간표 열기'), 'reminder toast pops up in the bottom-right corner on its own')
     check(await p.getByRole('button', { name: /^알림 \d+개 안 읽음$/ }).isVisible(), 'and it is in the bell too')
+    check((await chimes()).join() === 'reminder', 'a reminder rings the two-note chime')
     await rt.hover()
     await p.waitForTimeout(13000)
     check(await rt.isVisible(), 'hovering keeps it up')
@@ -178,6 +187,8 @@ try {
   await M('POST', '/push/test')
   await p.evaluate(() => window.dispatchEvent(new Event('focus')))
   const tt = p.getByRole('region', { name: '새 알림' }).getByRole('status').filter({ hasText: '알림이 잘 와요' })
+  await tt.waitFor()
+  check((await chimes()).at(-1) === 'other', 'other notifications ring the short chime')
   await tt.getByRole('button', { name: /알림이 잘 와요/ }).click()
   await p.waitForURL('**/settings')
   check((await tt.count()) === 0, 'clicking a toast opens its page and closes it')
@@ -191,6 +202,13 @@ try {
   await p.waitForTimeout(500)
   check((await M('GET', '/notifications')).body.settings.team === false, 'settings: team notifications switched off')
   await sec.getByLabel(/팀 알림/).check()
+  await sec.getByLabel(/알림 소리/).uncheck()
+  await listenChimes()
+  await M('POST', '/push/test')
+  await p.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await p.getByRole('region', { name: '새 알림' }).getByRole('status').first().waitFor()
+  check((await chimes()).length === 0, 'sound off: the toast shows without a chime')
+  await sec.getByLabel(/알림 소리/).check()
   const sw = await fetch(`${BASE}/sw.js`)
   check(sw.ok && sw.headers.get('cache-control') === 'no-cache' && (await sw.text()).includes("addEventListener('push'"), 'service worker served fresh at /sw.js')
 

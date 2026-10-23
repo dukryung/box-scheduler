@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { notifyApi } from '../../api/client'
 import type { NotifySettings as Settings } from '../../api/types'
 import { secondaryButton, primaryButton } from '../../components/styles'
+import { chime, setSoundOn, soundOn } from '../../lib/chime'
 import { browserTimezone, disablePush, enablePush, pushState, type PushState } from '../../lib/push'
 import { useNotifications } from '../../store/notificationsStore'
 
@@ -14,6 +15,7 @@ export function NotifySettings() {
   const [state, setState] = useState<PushState | null>(null)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<{ text: string; tone: 'good' | 'danger' } | null>(null)
+  const [sound, setSound] = useState(soundOn)
 
   useEffect(() => {
     void pushState().then(setState)
@@ -98,6 +100,27 @@ export function NotifySettings() {
       </div>
       {toggle('reminders', '일정 시작 10분 전 알림', '시간표에 넣은 일이 시작하기 10분 전에 알려 줘요. 완료한 일은 빼요.')}
       {toggle('team', '팀 알림', '누가 나를 팀 업무 담당자로 지정하거나, 내 몫을 AI로 세분화해 Brain Dump에 넣으면 알려 줘요.')}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <label className="flex flex-1 items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 accent-accent"
+            checked={sound}
+            onChange={(e) => {
+              setSound(e.target.checked)
+              setSoundOn(e.target.checked)
+              if (e.target.checked) chime('reminder', { force: true })
+            }}
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="font-medium">알림 소리</span>
+            <span className="text-xs text-muted">앱 화면에 알림이 뜰 때 짧게 ‘띵-동’ 울려요. 이 브라우저에만 적용돼요.</span>
+          </span>
+        </label>
+        <button className={`${secondaryButton} h-9 text-xs`} onClick={() => chime('reminder', { force: true })}>
+          소리 들어보기
+        </button>
+      </div>
       {note && (
         <p role={note.tone === 'danger' ? 'alert' : 'status'} className={`text-sm ${note.tone === 'danger' ? 'text-danger' : 'text-good'}`}>
           {note.text}
