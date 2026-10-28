@@ -1,4 +1,5 @@
 import type {
+  AppliedPlan,
   AIConnection,
   AppNotification,
   NotifySettings,
@@ -197,7 +198,7 @@ export const api = {
   assistantApply: (ops: AssistantOp[]) =>
     request<{ undo: AssistantOp[] }>('/assistant/apply', { method: 'POST', body: JSON.stringify({ ops }) }),
   aiApply: (date: string, blocks: SuggestedBlock[], estimates: Suggestion['estimates']) =>
-    request<Block[]>(`/days/${date}/ai-apply`, {
+    request<AppliedPlan>(`/days/${date}/ai-apply`, {
       method: 'POST',
       body: JSON.stringify({
         blocks: blocks.map(({ taskId, title, startSlot, endSlot }) => ({ taskId, title, startSlot, endSlot })),

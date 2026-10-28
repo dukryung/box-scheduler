@@ -112,6 +112,13 @@ export interface Suggestion {
   notes: string
 }
 
+/** What applying a plan saved; blocks move or drop out when the day changed meanwhile. */
+export interface AppliedPlan {
+  blocks: Block[]
+  moved: number
+  skipped: number
+}
+
 export interface BoxCount {
   plannedBoxes: number
   doneBoxes: number

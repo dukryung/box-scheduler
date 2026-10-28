@@ -222,10 +222,11 @@ export function DayView({ date }: { date: string }) {
       ai={ai}
       nowSlot={isToday ? nowSlot : null}
       onClose={closeAI}
-      onApplied={(count) => {
+      onApplied={({ blocks, moved, skipped }) => {
         setAiOpen(false)
         void reload()
-        setNotice(`AI 제안 ${count}개를 시간표에 추가했어요`)
+        const changed = [moved > 0 && `${moved}개는 겹치지 않게 시간을 옮겼어요`, skipped > 0 && `${skipped}개는 빈 시간이 없어 뺐어요`].filter(Boolean)
+        setNotice([`AI 제안 ${blocks.length}개를 시간표에 추가했어요`, ...changed].join(' · '))
       }}
     />
   )

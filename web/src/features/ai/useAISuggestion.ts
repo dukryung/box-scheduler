@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../api/client'
-import type { SuggestedBlock, Suggestion } from '../../api/types'
+import type { AppliedPlan, SuggestedBlock, Suggestion } from '../../api/types'
 
 type Status = 'idle' | 'loading' | 'ready' | 'applying'
 
@@ -62,17 +62,17 @@ export function useAISuggestion(date: string) {
 
   const accepted = suggestion?.blocks.filter((b) => !rejected.has(blockKey(b))) ?? []
 
-  /** Saves the accepted blocks; returns how many were added, or null on failure. */
-  async function apply(): Promise<number | null> {
+  /** Saves the accepted blocks; returns what was saved, or null on failure. */
+  async function apply(): Promise<AppliedPlan | null> {
     if (!suggestion || accepted.length === 0) return null
     setStatus('applying')
     setError(null)
     try {
       const acceptedTasks = new Set(accepted.map((b) => b.taskId))
       const estimates = suggestion.estimates.filter((e) => acceptedTasks.has(e.taskId))
-      const created = await api.aiApply(date, accepted, estimates)
+      const applied = await api.aiApply(date, accepted, estimates)
       reset()
-      return created.length
+      return applied
     } catch (e) {
       setError((e as Error).message)
       setStatus('ready')

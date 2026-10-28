@@ -109,10 +109,8 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "배치할 Brain Dump 항목이 없어요")
 		return
 	}
-	occupied := make([]scheduler.Range, 0, len(blocks))
 	for _, b := range blocks {
 		req.Blocks = append(req.Blocks, ai.BlockInput{Start: b.StartSlot, End: b.EndSlot, Title: b.Title})
-		occupied = append(occupied, scheduler.Range{Start: b.StartSlot, End: b.EndSlot})
 	}
 	for _, b := range history {
 		req.History = append(req.History, ai.HistoryItem{Title: b.Title, Boxes: b.EndSlot - b.StartSlot})
@@ -139,8 +137,14 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 	}
 	slog.Info("ai plan", "tasks", len(plan.Tasks), "elapsed", time.Since(started))
 
+	// The AI can take a minute, and the day may have changed meanwhile (a block
+	// moved or added), so the plan is placed around the day as it is now.
+	if blocks, err = a.store.ListBlocks(r.Context(), uid, date, date); err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	tasks, estimates, missing := toSchedulerTasks(plan, req.Tasks)
-	placed, unplaced := scheduler.Place(tasks, scheduler.Options{From: body.FromSlot, To: body.ToSlot, Occupied: occupied})
+	placed, unplaced := scheduler.Place(tasks, scheduler.Options{From: body.FromSlot, To: body.ToSlot, Occupied: occupiedBy(blocks)})
 
 	resp := suggestResponse{Blocks: []suggestedBlock{}, Unplaced: missing, Estimates: estimates, Notes: plan.Notes}
 	for _, p := range placed {
@@ -152,6 +156,14 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 		resp.Unplaced = append(resp.Unplaced, unplacedTask{TaskID: u.TaskID, Title: u.Title, Boxes: u.Boxes})
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func occupiedBy(blocks []store.Block) []scheduler.Range {
+	occupied := make([]scheduler.Range, 0, len(blocks))
+	for _, b := range blocks {
+		occupied = append(occupied, scheduler.Range{Start: b.StartSlot, End: b.EndSlot})
+	}
+	return occupied
 }
 
 // openTasks are the brain dump items that still need time on this day.
@@ -316,10 +328,41 @@ func (a *API) aiApply(w http.ResponseWriter, r *http.Request) {
 		estimates[e.TaskID] = clampBoxes(e.EstimateBoxes)
 	}
 
-	created, err := a.store.ApplyPlan(r.Context(), userID(r), blocks, estimates)
+	// The day may have changed since the plan was made: blocks that now overlap
+	// something move to the nearest free time, and ones that fit nowhere are left out.
+	current, err := a.store.ListBlocks(r.Context(), userID(r), date, date)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, created)
+	want := make([]scheduler.Range, len(blocks))
+	for i, b := range blocks {
+		want[i] = scheduler.Range{Start: b.StartSlot, End: b.EndSlot}
+	}
+	got, ok := scheduler.Fit(want, occupiedBy(current))
+	res := applyResponse{}
+	fitted := make([]store.Block, 0, len(blocks))
+	for i, b := range blocks {
+		switch {
+		case !ok[i]:
+			res.Skipped++
+			continue
+		case got[i] != want[i]:
+			res.Moved++
+		}
+		b.StartSlot, b.EndSlot = got[i].Start, got[i].End
+		fitted = append(fitted, b)
+	}
+
+	if res.Blocks, err = a.store.ApplyPlan(r.Context(), userID(r), fitted, estimates); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, res)
+}
+
+type applyResponse struct {
+	Blocks  []store.Block `json:"blocks"`
+	Moved   int           `json:"moved"`   // put at another time, as the day had changed
+	Skipped int           `json:"skipped"` // no free time left for them
 }

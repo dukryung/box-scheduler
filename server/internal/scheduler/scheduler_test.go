@@ -73,3 +73,28 @@ func TestPlaceUnknownWindowMeansAny(t *testing.T) {
 		t.Fatalf("placed = %q, want %q", got, want)
 	}
 }
+
+func TestFitMovesOnlyWhatOverlaps(t *testing.T) {
+	// The day changed after the plan was made: something now sits at 65-68.
+	occupied := []Range{{51, 54}, {58, 64}, {65, 68}}
+	got, ok := Fit([]Range{{66, 75}, {90, 93}}, occupied)
+	if !ok[0] || got[0] != (Range{68, 77}) {
+		t.Fatalf("moved = %v %v, want 68-77", got[0], ok[0])
+	}
+	if !ok[1] || got[1] != (Range{90, 93}) {
+		t.Fatalf("free range moved: %v", got[1])
+	}
+}
+
+func TestFitLooksEarlierWhenTheDayIsFullLater(t *testing.T) {
+	got, ok := Fit([]Range{{130, 136}, {131, 134}}, []Range{{0, 100}, {128, 144}})
+	if !ok[0] || got[0] != (Range{122, 128}) {
+		t.Fatalf("first = %v %v, want 122-128", got[0], ok[0])
+	}
+	if !ok[1] || got[1] != (Range{119, 122}) {
+		t.Fatalf("second = %v %v, want 119-122 (the earlier one keeps its spot)", got[1], ok[1])
+	}
+	if _, ok := Fit([]Range{{10, 20}}, []Range{{0, 144}}); ok[0] {
+		t.Fatal("fit into a full day")
+	}
+}

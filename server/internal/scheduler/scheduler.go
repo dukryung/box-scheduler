@@ -141,3 +141,54 @@ func firstFit(free *[SlotsPerDay]bool, lo, hi, boxes int) (int, bool) {
 	}
 	return 0, false
 }
+
+// Fit keeps each wanted range where it is when it is free, and otherwise moves
+// it to the nearest free run of the same length, looking later in the day first.
+// Earlier entries win over later ones; ok[i] is false when range i fits nowhere.
+func Fit(want []Range, occupied []Range) (got []Range, ok []bool) {
+	var free [SlotsPerDay]bool
+	for s := range free {
+		free[s] = true
+	}
+	take := func(r Range) {
+		for s := max(r.Start, 0); s < min(r.End, SlotsPerDay); s++ {
+			free[s] = false
+		}
+	}
+	for _, r := range occupied {
+		take(r)
+	}
+
+	got = make([]Range, len(want))
+	ok = make([]bool, len(want))
+	for i, r := range want {
+		boxes := min(max(r.End-r.Start, 1), SlotsPerDay)
+		start := min(max(r.Start, 0), SlotsPerDay-boxes)
+		at, found := firstFit(&free, start, SlotsPerDay, boxes)
+		if !found {
+			at, found = lastFit(&free, 0, start+boxes, boxes)
+		}
+		if !found {
+			continue
+		}
+		got[i], ok[i] = Range{at, at + boxes}, true
+		take(got[i])
+	}
+	return got, ok
+}
+
+// lastFit returns the last start in [lo, hi) where `boxes` consecutive slots are free.
+func lastFit(free *[SlotsPerDay]bool, lo, hi, boxes int) (int, bool) {
+	run := 0
+	for s := hi - 1; s >= lo; s-- {
+		if !free[s] {
+			run = 0
+			continue
+		}
+		run++
+		if run == boxes {
+			return s, true
+		}
+	}
+	return 0, false
+}

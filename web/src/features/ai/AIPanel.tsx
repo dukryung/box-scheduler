@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Close, Sparkle } from '../../components/icons'
 import { aiButton, aiOutlineButton } from '../../components/styles'
 import { SLOTS_PER_DAY, formatDuration, slotToTime } from '../../lib/slots'
+import type { AppliedPlan } from '../../api/types'
 import type { AISuggestionState } from './useAISuggestion'
 import { AIError } from '../../components/AIError'
 import { useAIQueue } from '../../lib/useAIQueue'
@@ -22,7 +23,7 @@ interface Props {
   ai: AISuggestionState
   nowSlot: number | null
   onClose: () => void
-  onApplied: (count: number) => void
+  onApplied: (applied: AppliedPlan) => void
 }
 
 export function AIPanel({ ai, nowSlot, onClose, onApplied }: Props) {
@@ -151,8 +152,8 @@ export function AIPanel({ ai, nowSlot, onClose, onApplied }: Props) {
           <div className="sticky bottom-0 -mx-1 flex flex-col gap-1.5 bg-surface px-1 pt-2">
             <button
               onClick={async () => {
-                const count = await ai.apply()
-                if (count !== null) onApplied(count)
+                const applied = await ai.apply()
+                if (applied) onApplied(applied)
               }}
               disabled={busy || ai.accepted.length === 0}
               className={`${aiButton} h-12 text-[15px]`}
