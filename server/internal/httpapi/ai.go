@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
@@ -30,7 +31,31 @@ type suggestedBlock struct {
 	StartSlot int    `json:"startSlot"`
 	EndSlot   int    `json:"endSlot"`
 	Reason    string `json:"reason"`
+	// Shifted: the time the person asked for was taken; this is the nearest free one.
+	Shifted bool `json:"shifted,omitempty"`
 }
+
+// reviseRequest asks for changes to a suggestion the person is looking at.
+type reviseRequest struct {
+	Previous []shownBlock `json:"previous"`
+	Earlier  []string     `json:"earlier"`
+	Request  string       `json:"request"`
+}
+
+// shownBlock is a block of the suggestion on screen; unchecked ones were switched off.
+type shownBlock struct {
+	TaskID    string `json:"taskId"`
+	Title     string `json:"title"`
+	StartSlot int    `json:"startSlot"`
+	EndSlot   int    `json:"endSlot"`
+	Unchecked bool   `json:"unchecked"`
+}
+
+const (
+	maxReviseText    = 300
+	maxReviseEarlier = 20
+	maxReviseBlocks  = 100
+)
 
 type unplacedTask struct {
 	TaskID string `json:"taskId"`
@@ -64,12 +89,19 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 		ToSlot   int `json:"toSlot"`
 		// Also consider backlog items that are urgent: due within a week, overdue, or high priority.
 		IncludeBacklog bool `json:"includeBacklog"`
+		// Revise asks for changes to the suggestion the person was shown.
+		Revise *reviseRequest `json:"revise"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
 	if !validSlots(body.FromSlot, body.ToSlot) {
 		writeError(w, http.StatusBadRequest, "slots must satisfy 0 <= fromSlot < toSlot <= 144")
+		return
+	}
+	revision, msg := toRevision(body.Revise)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 
@@ -104,6 +136,7 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 		Date: date, Weekday: koreanWeekdays[day.Weekday()],
 		From: body.FromSlot, To: body.ToSlot,
 		Tasks: candidates, Blocks: []ai.BlockInput{}, History: []ai.HistoryItem{},
+		Revision: revision,
 	}
 	if len(req.Tasks) == 0 {
 		writeError(w, http.StatusBadRequest, "배치할 Brain Dump 항목이 없어요")
@@ -117,7 +150,11 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	started := time.Now()
-	planner, ok := a.aiFor(w, r, "plan")
+	feature := "plan"
+	if revision != nil {
+		feature = "revise" // asking for changes is not counted against the service AI's daily limit
+	}
+	planner, ok := a.aiFor(w, r, feature)
 	if !ok {
 		return
 	}
@@ -143,13 +180,13 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	tasks, estimates, missing := toSchedulerTasks(plan, req.Tasks)
+	tasks, estimates, missing := toSchedulerTasks(plan, req.Tasks, body.Revise)
 	placed, unplaced := scheduler.Place(tasks, scheduler.Options{From: body.FromSlot, To: body.ToSlot, Occupied: occupiedBy(blocks)})
 
 	resp := suggestResponse{Blocks: []suggestedBlock{}, Unplaced: missing, Estimates: estimates, Notes: plan.Notes}
 	for _, p := range placed {
 		resp.Blocks = append(resp.Blocks, suggestedBlock{
-			TaskID: p.TaskID, Title: p.Title, StartSlot: p.Range.Start, EndSlot: p.Range.End, Reason: p.Reason,
+			TaskID: p.TaskID, Title: p.Title, StartSlot: p.Range.Start, EndSlot: p.Range.End, Reason: p.Reason, Shifted: p.Shifted,
 		})
 	}
 	for _, u := range unplaced {
@@ -217,9 +254,58 @@ func urgentBacklog(items []store.BacklogItem, day time.Time) []ai.TaskInput {
 	return tasks
 }
 
+// toRevision checks a revise request and turns it into what the AI is shown.
+func toRevision(rv *reviseRequest) (*ai.Revision, string) {
+	if rv == nil {
+		return nil, ""
+	}
+	rv.Request = strings.TrimSpace(rv.Request)
+	if rv.Request == "" || utf8.RuneCountInString(rv.Request) > maxReviseText {
+		return nil, "수정 요청은 1~" + itoa(maxReviseText) + "자로 적어 주세요"
+	}
+	if len(rv.Previous) > maxReviseBlocks || len(rv.Earlier) > maxReviseEarlier {
+		return nil, "수정할 제안이 너무 길어요"
+	}
+	out := &ai.Revision{Previous: []ai.SuggestedInput{}, Request: rv.Request}
+	for _, e := range rv.Earlier {
+		if e = strings.TrimSpace(e); e != "" && utf8.RuneCountInString(e) <= maxReviseText {
+			out.Earlier = append(out.Earlier, e)
+		}
+	}
+	for _, b := range rv.Previous {
+		if !validSlots(b.StartSlot, b.EndSlot) || utf8.RuneCountInString(b.Title) > 200 {
+			return nil, "수정할 제안의 블록이 올바르지 않아요"
+		}
+		out.Previous = append(out.Previous, ai.SuggestedInput{
+			TaskID: b.TaskID, Title: b.Title, Start: slotText(b.StartSlot), End: slotText(b.EndSlot), Unchecked: b.Unchecked,
+		})
+	}
+	return out, ""
+}
+
+// clockSlot reads "HH:MM" as a slot, rounding down to the 10-minute box.
+func clockSlot(s string) (int, bool) {
+	t, err := time.Parse("15:04", strings.TrimSpace(s))
+	if err != nil {
+		return 0, false
+	}
+	return t.Hour()*6 + t.Minute()/10, true
+}
+
 // toSchedulerTasks validates the model's plan against the real tasks: unknown ids
 // are dropped, sizes are clamped, and tasks the model skipped are reported back.
-func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput) ([]scheduler.Task, []taskEstimate, []unplacedTask) {
+// When revising, tasks the model kept stay exactly as they were shown, tasks it
+// was asked to leave out are dropped, and asked-for start times are honoured.
+func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput, rv *reviseRequest) ([]scheduler.Task, []taskEstimate, []unplacedTask) {
+	shown := map[string][]scheduler.Chunk{}
+	pins := map[string][]scheduler.Range{}
+	if rv != nil {
+		for _, b := range rv.Previous {
+			shown[b.TaskID] = append(shown[b.TaskID], scheduler.Chunk{Title: b.Title, Boxes: b.EndSlot - b.StartSlot})
+			pins[b.TaskID] = append(pins[b.TaskID], scheduler.Range{Start: b.StartSlot, End: b.EndSlot})
+		}
+	}
+
 	byID := make(map[string]ai.TaskInput, len(inputs))
 	for _, t := range inputs {
 		byID[t.ID] = t
@@ -234,6 +320,25 @@ func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput) ([]scheduler.Task, []
 			continue
 		}
 		seen[tp.TaskID] = true
+		if rv != nil && tp.Skip {
+			continue
+		}
+		// Kept as it was: where it was shown, or still left out (taken out by an
+		// earlier request, or it did not fit) when it was not on screen.
+		if rv != nil && tp.Keep {
+			if len(shown[in.ID]) == 0 {
+				continue
+			}
+			tasks = append(tasks, scheduler.Task{ID: in.ID, Priority: tp.Priority, Chunks: shown[in.ID], Pinned: pins[in.ID], Reason: tp.Reason})
+			if in.EstimateBoxes == nil {
+				boxes := 0
+				for _, c := range shown[in.ID] {
+					boxes += c.Boxes
+				}
+				estimates = append(estimates, taskEstimate{TaskID: in.ID, EstimateBoxes: clampBoxes(boxes)})
+			}
+			continue
+		}
 
 		estimate := clampBoxes(tp.EstimateBoxes)
 		chunks := []scheduler.Chunk{}
@@ -247,9 +352,11 @@ func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput) ([]scheduler.Task, []
 			chunks = []scheduler.Chunk{{Title: in.Title, Boxes: estimate}}
 		}
 
-		tasks = append(tasks, scheduler.Task{
-			ID: in.ID, Priority: tp.Priority, Window: scheduler.Window(tp.Window), Chunks: chunks, Reason: tp.Reason,
-		})
+		t := scheduler.Task{ID: in.ID, Priority: tp.Priority, Window: scheduler.Window(tp.Window), Chunks: chunks, Reason: tp.Reason}
+		if at, ok := clockSlot(tp.StartAt); ok && rv != nil {
+			t.StartAt = &at
+		}
+		tasks = append(tasks, t)
 		if in.EstimateBoxes == nil {
 			estimates = append(estimates, taskEstimate{TaskID: in.ID, EstimateBoxes: estimate})
 		}

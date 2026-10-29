@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../../api/client'
 import type { AppliedPlan, SuggestedBlock, Suggestion } from '../../api/types'
+import { diffSuggestion, type SuggestionDiff } from '../../lib/suggestionDiff'
 
-type Status = 'idle' | 'loading' | 'ready' | 'applying'
+type Status = 'idle' | 'loading' | 'revising' | 'ready' | 'applying'
 
 const blockKey = (b: SuggestedBlock) => `${b.taskId}:${b.startSlot}`
 
@@ -13,7 +14,11 @@ export function useAISuggestion(date: string) {
   const [error, setError] = useState<string | null>(null)
   const [rejected, setRejected] = useState<Set<string>>(new Set())
   const [hovered, setHovered] = useState<string | null>(null)
+  // Changes asked for on the current suggestion, oldest first, and what the last one changed.
+  const [requests, setRequests] = useState<string[]>([])
+  const [diff, setDiff] = useState<SuggestionDiff | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const paramsRef = useRef({ fromSlot: 0, toSlot: 0, includeBacklog: true })
 
   const reset = useCallback(() => {
     abortRef.current?.abort()
@@ -22,6 +27,8 @@ export function useAISuggestion(date: string) {
     setError(null)
     setRejected(new Set())
     setHovered(null)
+    setRequests([])
+    setDiff(null)
   }, [])
 
   // A plan only makes sense for the day it was made for.
@@ -31,17 +38,52 @@ export function useAISuggestion(date: string) {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
+    paramsRef.current = { fromSlot, toSlot, includeBacklog }
     setStatus('loading')
     setError(null)
     try {
       const res = await api.aiSuggest(date, fromSlot, toSlot, includeBacklog, controller.signal)
       setSuggestion(res)
       setRejected(new Set())
+      setRequests([])
+      setDiff(null)
       setStatus('ready')
     } catch (e) {
       if (controller.signal.aborted) return
       setError((e as Error).message)
       setStatus(suggestion ? 'ready' : 'idle')
+    }
+  }
+
+  /** Asks the AI to change the suggestion on screen; blocks switched off stay off. */
+  async function revise(message: string): Promise<boolean> {
+    const text = message.trim()
+    if (!suggestion || !text) return false
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    setStatus('revising')
+    setError(null)
+    const before = suggestion.blocks
+    const off = before.filter((b) => rejected.has(blockKey(b)))
+    try {
+      const { fromSlot, toSlot, includeBacklog } = paramsRef.current
+      const res = await api.aiSuggest(date, fromSlot, toSlot, includeBacklog, controller.signal, {
+        previous: before.map((b) => ({ taskId: b.taskId, title: b.title, startSlot: b.startSlot, endSlot: b.endSlot, unchecked: rejected.has(blockKey(b)) })),
+        earlier: requests,
+        request: text,
+      })
+      setSuggestion(res)
+      setRejected(new Set(res.blocks.filter((b) => off.some((o) => o.taskId === b.taskId && o.title === b.title)).map(blockKey)))
+      setRequests((r) => [...r, text])
+      setDiff(diffSuggestion(before, res.blocks))
+      setStatus('ready')
+      return true
+    } catch (e) {
+      if (controller.signal.aborted) return false
+      setError((e as Error).message)
+      setStatus('ready')
+      return false
     }
   }
 
@@ -89,7 +131,10 @@ export function useAISuggestion(date: string) {
     setHovered,
     isAccepted: (b: SuggestedBlock) => !rejected.has(blockKey(b)),
     blockKey,
+    requests,
+    diff,
     request,
+    revise,
     cancel,
     toggle,
     apply,

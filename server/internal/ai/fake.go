@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -26,7 +27,53 @@ func (Fake) Plan(_ context.Context, req PlanRequest) (Plan, error) {
 			Reason:        "순서대로 배치했어요.",
 		})
 	}
+	if req.Revision != nil {
+		reviseFake(&plan, req)
+	}
 	return plan, nil
+}
+
+var fakeHour = regexp.MustCompile(`(\d{1,2})시`)
+
+// reviseFake reads revision requests as ", "-separated clauses naming a task:
+// "<title> 빼줘" leaves it out, "<title> N시로" asks for N:00, and
+// "<title> N분" makes it N minutes where it was. Tasks no clause names are kept as they were.
+func reviseFake(plan *Plan, req PlanRequest) {
+	titles := map[string]string{}
+	for _, t := range req.Tasks {
+		titles[t.ID] = t.Title
+	}
+	shownAt := map[string]string{}
+	for _, b := range req.Revision.Previous {
+		if _, ok := shownAt[b.TaskID]; !ok {
+			shownAt[b.TaskID] = b.Start
+		}
+	}
+	for i := range plan.Tasks {
+		tp := &plan.Tasks[i]
+		tp.Keep = true
+		for _, clause := range strings.Split(req.Revision.Request, ", ") {
+			if !strings.Contains(clause, titles[tp.TaskID]) {
+				continue
+			}
+			tp.Keep = false
+			if strings.Contains(clause, "빼") {
+				tp.Skip = true
+			}
+			if m := fakeHour.FindStringSubmatch(clause); m != nil {
+				tp.StartAt = fmt.Sprintf("%02s:00", m[1])
+			}
+			var mins int
+			if _, err := fmt.Sscanf(clause[strings.LastIndex(clause, " ")+1:], "%d분", &mins); err == nil && mins > 0 {
+				tp.EstimateBoxes = max(mins/10, 1)
+				tp.Chunks = []Chunk{{Title: titles[tp.TaskID], Boxes: tp.EstimateBoxes}}
+				if tp.StartAt == "" {
+					tp.StartAt = shownAt[tp.TaskID]
+				}
+			}
+		}
+	}
+	plan.Notes = "요청대로 고쳤어요: " + req.Revision.Request
 }
 
 // Fake assistant understands a tiny command language so tests are deterministic.

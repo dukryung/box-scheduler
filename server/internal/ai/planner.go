@@ -44,6 +44,23 @@ type PlanRequest struct {
 	Tasks   []TaskInput   `json:"tasks"`
 	Blocks  []BlockInput  `json:"existingBlocks"`
 	History []HistoryItem `json:"recentCompleted"`
+	// Revision is set when the person asks for changes to a plan they were shown.
+	Revision *Revision `json:"revision,omitempty"`
+}
+
+// SuggestedInput is one block of the plan the person was shown.
+type SuggestedInput struct {
+	TaskID    string `json:"taskId"`
+	Title     string `json:"title"`
+	Start     string `json:"start"` // HH:MM
+	End       string `json:"end"`
+	Unchecked bool   `json:"uncheckedByUser,omitempty"`
+}
+
+type Revision struct {
+	Previous []SuggestedInput `json:"previousSuggestion"`
+	Earlier  []string         `json:"earlierRequests,omitempty"`
+	Request  string           `json:"request"`
 }
 
 type Chunk struct {
@@ -58,6 +75,11 @@ type TaskPlan struct {
 	Window        string  `json:"preferredWindow"`
 	Chunks        []Chunk `json:"chunks"`
 	Reason        string  `json:"reason"`
+	// Set only when revising: a start time the person asked for ("HH:MM"), a
+	// task they asked to leave out, or a task the request does not touch.
+	StartAt string `json:"startAt"`
+	Skip    bool   `json:"skip"`
+	Keep    bool   `json:"keep"`
 }
 
 type Plan struct {

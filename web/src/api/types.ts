@@ -102,6 +102,16 @@ export interface SuggestedBlock {
   startSlot: number
   endSlot: number
   reason: string
+  /** The time asked for in a revision was taken; this is the nearest free one. */
+  shifted?: boolean
+}
+
+/** Asks the AI to change the suggestion on screen. */
+export interface ReviseRequest {
+  previous: Array<{ taskId: string; title: string; startSlot: number; endSlot: number; unchecked: boolean }>
+  /** Changes asked for before, already applied. */
+  earlier: string[]
+  request: string
 }
 
 export interface Suggestion {

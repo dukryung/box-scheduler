@@ -21,7 +21,7 @@ type ServiceAI struct {
 // Model is the model for a feature ("" when that feature is not offered).
 func (s ServiceAI) Model(feature string) string {
 	switch feature {
-	case "plan", "breakdown":
+	case "plan", "revise", "breakdown":
 		return s.PlanModel
 	case "request":
 		return s.RequestModel
@@ -37,11 +37,12 @@ func (s *Store) ServiceAI(ctx context.Context) (ServiceAI, error) {
 	return a, mapErr(err)
 }
 
-// ServiceCallsToday counts an account's service-AI calls since local midnight (Asia/Seoul).
+// ServiceCallsToday counts an account's service-AI calls since local midnight
+// (Asia/Seoul). Revising a suggestion is free: it does not count.
 func (s *Store) ServiceCallsToday(ctx context.Context, userID string) (int, error) {
 	var n int
 	err := s.pool.QueryRow(ctx,
-		`SELECT count(*) FROM ai_calls WHERE user_id = $1 AND source = 'service'
+		`SELECT count(*) FROM ai_calls WHERE user_id = $1 AND source = 'service' AND feature <> 'revise'
 		    AND at >= date_trunc('day', now() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul'`, userID).Scan(&n)
 	return n, mapErr(err)
 }

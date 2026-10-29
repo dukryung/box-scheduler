@@ -29,7 +29,7 @@ var aiFeatures = []string{"plan", "request", "tidy"}
 
 func featureChoice(s store.AISettings, feature string) string {
 	switch feature {
-	case "plan", "breakdown": // splitting a task uses the planning AI
+	case "plan", "revise", "breakdown": // revising a plan and splitting a task use the planning AI
 		return s.Plan
 	case "request":
 		return s.Request
@@ -104,7 +104,7 @@ func (a *API) aiFor(w http.ResponseWriter, r *http.Request, feature string) (ai.
 			writeErrorCode(w, http.StatusForbidden, "ai_not_connected", "서비스 AI를 지금은 쓸 수 없어요. 설정 → AI 연결에서 내 API 키를 연결할 수 있어요")
 			return nil, false
 		}
-		if !u.IsOwner && svc.DailyLimit > 0 {
+		if !u.IsOwner && svc.DailyLimit > 0 && feature != "revise" {
 			used, err := a.store.ServiceCallsToday(r.Context(), u.ID)
 			if err != nil {
 				writeStoreError(w, err)

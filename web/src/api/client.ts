@@ -1,4 +1,5 @@
 import type {
+  ReviseRequest,
   AppliedPlan,
   AIConnection,
   AppNotification,
@@ -182,10 +183,10 @@ export const api = {
   carryOver: (from: string, to: string) =>
     request<BrainDumpItem[]>(`/days/${from}/carry-over`, { method: 'POST', body: JSON.stringify({ to }) }),
 
-  aiSuggest: (date: string, fromSlot: number, toSlot: number, includeBacklog: boolean, signal?: AbortSignal) =>
+  aiSuggest: (date: string, fromSlot: number, toSlot: number, includeBacklog: boolean, signal?: AbortSignal, revise?: ReviseRequest) =>
     request<Suggestion>(`/days/${date}/ai-suggest`, {
       method: 'POST',
-      body: JSON.stringify({ fromSlot, toSlot, includeBacklog }),
+      body: JSON.stringify({ fromSlot, toSlot, includeBacklog, revise }),
       signal,
     }),
   assistantPreview: (

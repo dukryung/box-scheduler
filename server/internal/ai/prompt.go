@@ -17,7 +17,20 @@ You get the tasks from their brain dump, the blocks already on their calendar, a
 
 Some tasks have a dueDate (deadline). Tasks marked backlog come from the person's backlog, not today's list: put them in priority order by deadline, and if the day is too full give them the lowest priority so they are the ones left out.
 
-Use recentCompleted to calibrate estimates for similar work. Do not place tasks on specific slots; a separate scheduler does that. Put any advice about the day as a whole (overload, missing breaks, tasks that will not fit) in notes, in the same language as the task titles, in two sentences at most. Include every task exactly once, using its id as taskId. In reason and notes, talk in hours and minutes, never in boxes or slots.`
+Use recentCompleted to calibrate estimates for similar work. Do not place tasks on specific slots; a separate scheduler does that. Put any advice about the day as a whole (overload, missing breaks, tasks that will not fit) in notes, in the same language as the task titles, in two sentences at most. Include every task exactly once, using its id as taskId. In reason and notes, talk in hours and minutes, never in boxes or slots.
+
+Leave startAt "", skip false and keep false, unless the prompt asks you to revise an earlier suggestion.`
+
+const revisionPrompt = `This time you are revising: revision.previousSuggestion is the plan the person was shown (blocks with start and end times), revision.earlierRequests are changes they asked for before, already applied, and revision.request is what they ask now. Change only what revision.request asks for:
+- keep: true for every task the request does not touch, so it stays exactly where it was. Copy its estimate and chunks from before.
+- skip: true for a task the person wants left out of this plan.
+- startAt: "HH:MM" (24-hour) when they ask for a task at a specific time, e.g. "8시" in the evening is "20:00". When a task only gets longer or shorter or is split differently, set startAt to its current start so it stays in place. Otherwise "".
+- Other changes (longer or shorter, split differently, earlier or later in the day, more urgent) go in estimateBoxes, chunks, preferredWindow and priority as usual, with keep false.
+Any task the request names gets keep: false, and its new values must actually carry the change. Examples, for a task shown at 09:30–10:30:
+- "30분만 하면 돼" → keep false, estimateBoxes 3, chunks [one chunk of 3], startAt "09:30".
+- "오후로 미뤄줘" → keep false, preferredWindow "afternoon", startAt "".
+- "빼줘" → skip true.
+Blocks marked uncheckedByUser were switched off by the person; keep those tasks unless asked otherwise. Still include every task exactly once. In notes, say in one short sentence what you changed, in the language of the request, and only what your answer really changes.`
 
 // planSchema constrains the model's output to Plan.
 var planSchema = map[string]any{
@@ -44,9 +57,12 @@ var planSchema = map[string]any{
 							"additionalProperties": false,
 						},
 					},
-					"reason": map[string]any{"type": "string"},
+					"reason":  map[string]any{"type": "string"},
+					"startAt": map[string]any{"type": "string"},
+					"skip":    map[string]any{"type": "boolean"},
+					"keep":    map[string]any{"type": "boolean"},
 				},
-				"required":             []string{"taskId", "estimateBoxes", "priority", "preferredWindow", "chunks", "reason"},
+				"required":             []string{"taskId", "estimateBoxes", "priority", "preferredWindow", "chunks", "reason", "startAt", "skip", "keep"},
 				"additionalProperties": false,
 			},
 		},
@@ -63,5 +79,8 @@ func userPrompt(req PlanRequest) string {
 	b.WriteString("<day>\n")
 	b.Write(ctx)
 	b.WriteString("\n</day>")
+	if req.Revision != nil {
+		b.WriteString("\n\n" + revisionPrompt)
+	}
 	return b.String()
 }

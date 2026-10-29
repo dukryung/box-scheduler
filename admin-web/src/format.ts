@@ -55,7 +55,7 @@ export const ACTION_LABEL: Record<string, string> = {
   'owner-move': '소유자 데이터 이전',
 }
 
-export const AI_FEATURE: Record<string, string> = { plan: 'AI 일정 제안', request: '말로 요청하기', tidy: '음성 정리' }
+export const AI_FEATURE: Record<string, string> = { plan: 'AI 일정 제안', revise: 'AI 제안 수정', breakdown: '업무 나누기', request: '말로 요청하기', tidy: '음성 정리' }
 
 export const btn = {
   primary: 'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-accent px-3.5 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40',

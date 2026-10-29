@@ -98,3 +98,34 @@ func TestFitLooksEarlierWhenTheDayIsFullLater(t *testing.T) {
 		t.Fatal("fit into a full day")
 	}
 }
+
+func TestPlaceKeepsPinnedAndAskedForTimes(t *testing.T) {
+	at := func(s int) *int { return &s }
+	tasks := []Task{
+		{ID: "new", Priority: 1, Window: Morning, Chunks: []Chunk{{"new", 3}}},
+		{ID: "kept", Priority: 3, Chunks: []Chunk{{"kept", 3}}, Pinned: []Range{{60, 63}}},
+		// 20:00 is past To (18:00); the person asked for it, so it still goes there.
+		{ID: "evening", Priority: 2, Chunks: []Chunk{{"evening a", 2}, {"evening b", 2}}, StartAt: at(120)},
+	}
+	placed, unplaced := Place(tasks, Options{From: 54, To: 108, Occupied: []Range{{54, 57}}})
+	if got, want := ranges(placed), "new:57-60 kept:60-63 evening a:120-122 evening b:122-124 "; got != want {
+		t.Fatalf("placed = %q, want %q", got, want)
+	}
+	if len(unplaced) != 0 || placed[2].Shifted {
+		t.Fatalf("unplaced = %v, shifted = %v", unplaced, placed[2].Shifted)
+	}
+}
+
+func TestPlaceShiftsAnAskedForTimeThatIsTaken(t *testing.T) {
+	at := 60
+	placed, _ := Place([]Task{{ID: "a", Chunks: []Chunk{{"a", 3}}, StartAt: &at}}, Options{From: 0, To: 144, Occupied: []Range{{58, 62}}})
+	if len(placed) != 1 || placed[0].Range != (Range{62, 65}) || !placed[0].Shifted {
+		t.Fatalf("placed = %+v", placed)
+	}
+	// Never before From, even when asked.
+	early := 10
+	placed, _ = Place([]Task{{ID: "b", Chunks: []Chunk{{"b", 2}}, StartAt: &early}}, Options{From: 54, To: 144})
+	if placed[0].Range != (Range{54, 56}) {
+		t.Fatalf("early ask = %+v", placed[0].Range)
+	}
+}

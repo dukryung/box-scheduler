@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"box-scheduler/server/internal/ai"
+	"box-scheduler/server/internal/scheduler"
 	"box-scheduler/server/internal/store"
 )
 
@@ -23,7 +24,7 @@ func TestToSchedulerTasksValidatesPlan(t *testing.T) {
 		{TaskID: "zzz", EstimateBoxes: 2, Priority: 1}, // unknown id: ignored
 	}}
 
-	tasks, estimates, missing := toSchedulerTasks(plan, inputs)
+	tasks, estimates, missing := toSchedulerTasks(plan, inputs, nil)
 
 	if len(tasks) != 2 {
 		t.Fatalf("tasks = %+v", tasks)
@@ -41,6 +42,56 @@ func TestToSchedulerTasksValidatesPlan(t *testing.T) {
 	}
 	if len(missing) != 1 || missing[0].TaskID != "c" || missing[0].Boxes != defaultTaskBoxes {
 		t.Fatalf("missing = %+v", missing)
+	}
+}
+
+func TestToSchedulerTasksRevision(t *testing.T) {
+	inputs := []ai.TaskInput{{ID: "a", Title: "기획서"}, {ID: "b", Title: "메일"}, {ID: "c", Title: "운동"}, {ID: "d", Title: "독서"}}
+	rv := &reviseRequest{Request: "운동은 8시로, 메일은 빼줘"}
+	rv.Previous = []shownBlock{
+		{TaskID: "a", Title: "기획서 · 초안", StartSlot: 60, EndSlot: 66},
+		{TaskID: "a", Title: "기획서 · 검토", StartSlot: 70, EndSlot: 72},
+	}
+	plan := ai.Plan{Tasks: []ai.TaskPlan{
+		// Kept: the model's own chunks are ignored, the shown blocks stay.
+		{TaskID: "a", EstimateBoxes: 3, Priority: 1, Keep: true, Chunks: []ai.Chunk{{Title: "다른", Boxes: 3}}},
+		{TaskID: "b", EstimateBoxes: 2, Priority: 2, Skip: true},
+		{TaskID: "c", EstimateBoxes: 6, Priority: 3, StartAt: "20:05"},
+		// Kept but not on screen (left out earlier): stays out.
+		{TaskID: "d", EstimateBoxes: 3, Priority: 4, Keep: true},
+	}}
+
+	tasks, estimates, missing := toSchedulerTasks(plan, inputs, rv)
+
+	if len(tasks) != 2 || len(missing) != 0 {
+		t.Fatalf("tasks = %+v, missing = %+v (a skipped task is not missing)", tasks, missing)
+	}
+	if a := tasks[0]; len(a.Chunks) != 2 || a.Chunks[1].Title != "기획서 · 검토" || a.Pinned[0] != (scheduler.Range{Start: 60, End: 66}) {
+		t.Fatalf("kept = %+v", a)
+	}
+	if c := tasks[1]; c.StartAt == nil || *c.StartAt != 120 {
+		t.Fatalf("asked-for time = %+v", c.StartAt)
+	}
+	if len(estimates) != 2 || estimates[0] != (taskEstimate{TaskID: "a", EstimateBoxes: 8}) {
+		t.Fatalf("estimates = %+v", estimates)
+	}
+	// Outside a revision these fields mean nothing.
+	plain, _, _ := toSchedulerTasks(plan, inputs, nil)
+	if len(plain) != 4 || plain[2].StartAt != nil || plain[0].Pinned != nil {
+		t.Fatalf("plain = %+v", plain)
+	}
+}
+
+func TestToRevisionChecksInput(t *testing.T) {
+	if _, msg := toRevision(&reviseRequest{Request: "  "}); msg == "" {
+		t.Fatal("empty request accepted")
+	}
+	if _, msg := toRevision(&reviseRequest{Request: strings.Repeat("가", maxReviseText+1)}); msg == "" {
+		t.Fatal("long request accepted")
+	}
+	rv, msg := toRevision(&reviseRequest{Request: " 운동은 저녁에 ", Earlier: []string{"", "메일 빼줘"}})
+	if msg != "" || rv.Request != "운동은 저녁에" || len(rv.Earlier) != 1 {
+		t.Fatalf("rv = %+v, msg = %q", rv, msg)
 	}
 }
 

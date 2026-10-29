@@ -49,6 +49,11 @@ type Task struct {
 	Window   Window
 	Chunks   []Chunk
 	Reason   string
+	// Pinned gives each chunk the range it should keep (a task left as it was
+	// when a plan is revised); StartAt is a start slot the person asked for.
+	// Either may go past To, and moves to the nearest free time when taken.
+	Pinned  []Range
+	StartAt *int
 }
 
 type Placement struct {
@@ -56,6 +61,8 @@ type Placement struct {
 	Title  string
 	Range  Range
 	Reason string
+	// Shifted: the asked-for time was taken, so it went to the nearest free time.
+	Shifted bool
 }
 
 type Unplaced struct {
@@ -65,20 +72,24 @@ type Unplaced struct {
 }
 
 type Options struct {
-	// Placements stay within [From, To).
+	// Placements stay within [From, To), except times the person fixed, which
+	// may run to the end of the day.
 	From, To int
 	Occupied []Range
 }
 
 // Place assigns each chunk the earliest free run in its task's preferred window,
-// falling back to anywhere in [From, To). Tasks go in priority order and a task's
-// chunks keep their order.
+// falling back to anywhere in [From, To). Tasks the person fixed (pinned, or at
+// an asked-for time) go first, then the rest in priority order; a task's chunks
+// keep their order.
 func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 	from := max(opt.From, 0)
 	to := min(opt.To, SlotsPerDay)
 
+	// Free runs reach the end of the day: asked-for times may go past To, while
+	// other tasks only ever search up to To.
 	var free [SlotsPerDay]bool
-	for s := from; s < to; s++ {
+	for s := from; s < SlotsPerDay; s++ {
 		free[s] = true
 	}
 	for _, r := range opt.Occupied {
@@ -87,38 +98,74 @@ func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 		}
 	}
 
+	// near is the free run of boxes closest to start, later first; never before From.
+	near := func(start, boxes int) (int, bool) {
+		start = min(max(start, from), SlotsPerDay-boxes)
+		if at, ok := firstFit(&free, start, SlotsPerDay, boxes); ok {
+			return at, true
+		}
+		return lastFit(&free, from, start+boxes, boxes)
+	}
+	// What the person fixed goes first: tasks kept as they were, then asked-for times.
+	stage := func(t Task) int {
+		switch {
+		case len(t.Pinned) == len(t.Chunks) && len(t.Pinned) > 0:
+			return 0
+		case t.StartAt != nil:
+			return 1
+		}
+		return 2
+	}
 	ordered := slices.Clone(tasks)
-	slices.SortStableFunc(ordered, func(a, b Task) int { return cmp.Compare(a.Priority, b.Priority) })
+	slices.SortStableFunc(ordered, func(a, b Task) int {
+		return cmp.Or(cmp.Compare(stage(a), stage(b)), cmp.Compare(a.Priority, b.Priority))
+	})
 
 	placed := []Placement{}
 	unplaced := []Unplaced{}
+	take := func(t Task, c Chunk, start, boxes int, shifted bool) int {
+		end := start + boxes
+		for s := start; s < end; s++ {
+			free[s] = false
+		}
+		if boxes >= focusBreakBoxes && end < SlotsPerDay {
+			free[end] = false // keep a short break after a long focus block
+		}
+		placed = append(placed, Placement{TaskID: t.ID, Title: c.Title, Range: Range{start, end}, Reason: t.Reason, Shifted: shifted})
+		return end
+	}
 	for _, t := range ordered {
 		cursor := from
-		for _, c := range t.Chunks {
+		st := stage(t)
+		for i, c := range t.Chunks {
 			boxes := min(max(c.Boxes, 1), SlotsPerDay)
-			w, ok := windowRanges[t.Window]
-			if !ok {
-				w = windowRanges[Any]
-			}
-
-			start, found := firstFit(&free, max(cursor, w.Start, from), min(w.End, to), boxes)
-			if !found {
-				start, found = firstFit(&free, cursor, to, boxes)
+			var start int
+			var found, shifted bool
+			switch st {
+			case 0:
+				want := t.Pinned[i]
+				boxes = min(max(want.End-want.Start, 1), SlotsPerDay)
+				start, found = near(want.Start, boxes)
+				shifted = found && start != want.Start
+			case 1:
+				want := max(*t.StartAt, cursor)
+				start, found = near(want, boxes)
+				shifted = found && i == 0 && start != *t.StartAt
+			default:
+				w, ok := windowRanges[t.Window]
+				if !ok {
+					w = windowRanges[Any]
+				}
+				start, found = firstFit(&free, max(cursor, w.Start, from), min(w.End, to), boxes)
+				if !found {
+					start, found = firstFit(&free, cursor, to, boxes)
+				}
 			}
 			if !found {
 				unplaced = append(unplaced, Unplaced{TaskID: t.ID, Title: c.Title, Boxes: boxes})
 				continue
 			}
-
-			end := start + boxes
-			for s := start; s < end; s++ {
-				free[s] = false
-			}
-			if boxes >= focusBreakBoxes && end < SlotsPerDay {
-				free[end] = false // keep a short break after a long focus block
-			}
-			placed = append(placed, Placement{TaskID: t.ID, Title: c.Title, Range: Range{start, end}, Reason: t.Reason})
-			cursor = end
+			cursor = take(t, c, start, boxes, shifted)
 		}
 	}
 
