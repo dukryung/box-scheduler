@@ -33,7 +33,7 @@ const changeLabel: Record<BlockChange, string> = { new: '새로 넣음', moved: 
 
 export function AIPanel({ ai, nowSlot, onClose, onApplied }: Props) {
   const [range, setRange] = useState(() => defaultRange(nowSlot))
-  const [includeBacklog, setIncludeBacklog] = useState(true)
+  const [includeBacklog, setIncludeBacklog] = useState(false)
   const { status, suggestion, error } = ai
   const busy = status === 'loading' || status === 'revising' || status === 'applying'
   const waiting = useAIQueue(status === 'loading' || status === 'revising')

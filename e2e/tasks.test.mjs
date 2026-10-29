@@ -101,7 +101,12 @@ try {
 
   // 9. AI suggestion can include urgent backlog items
   await day.getByRole('region', { name: '아직 시간표에 없음' }).getByRole('button', { name: 'AI로 시간 정하기' }).click()
-  check(await day.getByLabel('보관함에서 마감이 가깝거나 중요한 일도 함께 넣기').isChecked(), 'backlog option on by default')
+  const backlogOption = day.getByLabel('보관함에서 마감이 가깝거나 중요한 일도 함께 넣기')
+  check(!(await backlogOption.isChecked()), 'backlog option off by default')
+  // Only backlog items are left for this day, so nothing is planned without them.
+  const off = await json('POST', `/days/${T}/ai-suggest`, { fromSlot: 54, toSlot: 132, includeBacklog: false })
+  check(off.error === '배치할 Brain Dump 항목이 없어요', 'off: backlog items left out')
+  await backlogOption.check()
   await day.getByRole('button', { name: '제안 받기' }).click()
   await day.getByRole('button', { name: /개 블록 적용/ }).waitFor()
   const proposed = await day.getByRole('list', { name: '제안된 블록' }).textContent()

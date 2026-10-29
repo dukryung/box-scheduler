@@ -18,7 +18,7 @@ export function useAISuggestion(date: string) {
   const [requests, setRequests] = useState<string[]>([])
   const [diff, setDiff] = useState<SuggestionDiff | null>(null)
   const abortRef = useRef<AbortController | null>(null)
-  const paramsRef = useRef({ fromSlot: 0, toSlot: 0, includeBacklog: true })
+  const paramsRef = useRef({ fromSlot: 0, toSlot: 0, includeBacklog: false })
   // The break between blocks: the panel's setting, until a change request asks for another one.
   const [breakMinutes, setBreakMinutes] = useState(0)
   useEffect(() => {
@@ -58,7 +58,7 @@ export function useAISuggestion(date: string) {
   // A plan only makes sense for the day it was made for.
   useEffect(() => reset, [date, reset])
 
-  async function request(fromSlot: number, toSlot: number, includeBacklog = true) {
+  async function request(fromSlot: number, toSlot: number, includeBacklog = false) {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
