@@ -77,7 +77,7 @@ func TestToSchedulerTasksRevision(t *testing.T) {
 	}
 	// Outside a revision these fields mean nothing.
 	plain, _, _ := toSchedulerTasks(plan, inputs, nil)
-	if len(plain) != 4 || plain[2].StartAt != nil || plain[0].Pinned != nil {
+	if len(plain) != 4 || plain[2].StartAt != nil || *plain[2].Prefer != 120 || plain[0].Pinned != nil {
 		t.Fatalf("plain = %+v", plain)
 	}
 }
@@ -92,6 +92,21 @@ func TestToSchedulerTasksAskedForSpan(t *testing.T) {
 	}
 	if estimates[0].EstimateBoxes != 3 {
 		t.Fatalf("estimates = %+v", estimates)
+	}
+}
+
+func TestToSchedulerTasksTakesTheAIsTimes(t *testing.T) {
+	inputs := []ai.TaskInput{{ID: "qt", Title: "QT 하기"}, {ID: "x", Title: "기획서"}}
+	plan := ai.Plan{Tasks: []ai.TaskPlan{
+		{TaskID: "qt", EstimateBoxes: 3, Priority: 1, StartAt: "09:00"},
+		{TaskID: "x", EstimateBoxes: 6, Priority: 2, StartAt: "아침"}, // unreadable: window only
+	}}
+	tasks, _, _ := toSchedulerTasks(plan, inputs, nil)
+	if tasks[0].Prefer == nil || *tasks[0].Prefer != 54 || tasks[0].StartAt != nil {
+		t.Fatalf("qt = %+v", tasks[0])
+	}
+	if tasks[1].Prefer != nil {
+		t.Fatalf("x = %+v", tasks[1])
 	}
 }
 

@@ -54,6 +54,11 @@ type Task struct {
 	// Either may go past To, and moves to the nearest free time when taken.
 	Pinned  []Range
 	StartAt *int
+	// Prefer is the start the AI chose. Small models are vague about exact times
+	// but sensible about the order of the day, so it sets the order and the part
+	// of the day (morning, afternoon, evening); within that, tasks run back to
+	// back from the start of their part of the day.
+	Prefer *int
 }
 
 type Placement struct {
@@ -79,10 +84,10 @@ type Options struct {
 	Occupied []Range
 }
 
-// Place assigns each chunk the earliest free run in its task's preferred window,
-// falling back to anywhere in [From, To). Tasks the person fixed (pinned, or at
-// an asked-for time) go first, then the rest in priority order; a task's chunks
-// keep their order.
+// Place puts each task where the plan says: an asked-for or kept time first,
+// then the AI's chosen start (or the nearest free time to it), and otherwise the
+// earliest free run in the task's preferred window, falling back to anywhere in
+// [From, To). Nothing overlaps, and a task's chunks keep their order.
 func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 	from := max(opt.From, 0)
 	to := min(opt.To, SlotsPerDay)
@@ -99,20 +104,27 @@ func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 		}
 	}
 
-	// near is the free run of boxes closest to start, later first; never before From.
-	near := func(start, boxes int) (int, bool) {
-		start = min(max(start, from), SlotsPerDay-boxes)
-		if at, ok := firstFit(&free, start, SlotsPerDay, boxes); ok {
+	// nearIn is the free run of boxes in [lo, hi) closest to start, later first.
+	nearIn := func(start, boxes, lo, hi int) (int, bool) {
+		start = min(max(start, lo), hi-boxes)
+		if start < lo {
+			return 0, false
+		}
+		if at, ok := firstFit(&free, start, hi, boxes); ok {
 			return at, true
 		}
-		return lastFit(&free, from, start+boxes, boxes)
+		return lastFit(&free, lo, start+boxes, boxes)
 	}
+	// Fixed times may run to the end of the day, never before From.
+	near := func(start, boxes int) (int, bool) { return nearIn(start, boxes, from, SlotsPerDay) }
 	// What the person fixed goes first: times they asked for win over everything
 	// else suggested, then tasks kept as they were (moving aside if an asked-for
-	// time took their place), then the rest.
+	// time took their place). Then the AI's timed plan, earliest first, and last
+	// tasks with only a preferred window.
 	const (
 		asked = iota
 		pinned
+		timed
 		planned
 	)
 	stage := func(t Task) int {
@@ -121,16 +133,35 @@ func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 			return asked
 		case len(t.Pinned) == len(t.Chunks) && len(t.Pinned) > 0:
 			return pinned
+		case t.Prefer != nil:
+			return timed
 		}
 		return planned
 	}
+	preferred := func(t Task) int {
+		if t.Prefer != nil {
+			return *t.Prefer
+		}
+		return 0
+	}
+	total := func(t Task) int {
+		n := 0
+		for _, c := range t.Chunks {
+			n += c.Boxes
+		}
+		return n
+	}
+	// At the same time and priority, a short task (a routine) goes before a long one.
 	ordered := slices.Clone(tasks)
 	slices.SortStableFunc(ordered, func(a, b Task) int {
-		return cmp.Or(cmp.Compare(stage(a), stage(b)), cmp.Compare(a.Priority, b.Priority))
+		return cmp.Or(cmp.Compare(stage(a), stage(b)), cmp.Compare(preferred(a), preferred(b)), cmp.Compare(a.Priority, b.Priority), cmp.Compare(total(a), total(b)))
 	})
 
 	placed := []Placement{}
 	unplaced := []Unplaced{}
+	// Where the previous task in the AI's order ended, per part of the day, so a
+	// long task running into the evening does not drag the morning's tasks along.
+	lastEnd := [3]int{from, from, from}
 	take := func(t Task, c Chunk, start, boxes int, shifted bool, breather bool) int {
 		end := start + boxes
 		for s := start; s < end; s++ {
@@ -158,6 +189,24 @@ func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 				want := max(*t.StartAt, cursor)
 				start, found = near(want, boxes)
 				shifted = found && i == 0 && start != *t.StartAt
+			case timed:
+				p := partOf(*t.Prefer)
+				lo := max(parts[p].Start, lastEnd[p], from)
+				if i > 0 {
+					lo = max(lo, cursor)
+				}
+				// Its part of the day, or the start of a later one, before anywhere at all.
+				for p := partOf(lo); p < len(parts) && !found; p++ {
+					lo = max(lo, lastEnd[p])
+					start, found = firstFit(&free, max(lo, parts[p].Start), min(parts[p].End, to), boxes)
+				}
+				if !found {
+					floor := from
+					if i > 0 {
+						floor = cursor // a task's chunks keep their order
+					}
+					start, found = nearIn(lo, boxes, floor, to)
+				}
 			default:
 				w, ok := windowRanges[t.Window]
 				if !ok {
@@ -173,12 +222,30 @@ func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 				continue
 			}
 			// Fixed times sit as asked, without the break a planned block keeps after it.
-			cursor = take(t, c, start, boxes, shifted, st == planned)
+			cursor = take(t, c, start, boxes, shifted, st >= timed)
+			if st == timed {
+				p := partOf(start)
+				lastEnd[p] = max(lastEnd[p], cursor)
+			}
 		}
 	}
 
 	slices.SortFunc(placed, func(a, b Placement) int { return cmp.Compare(a.Range.Start, b.Range.Start) })
 	return placed, unplaced
+}
+
+// parts are the morning, afternoon and evening, with lunch left out.
+var parts = []Range{windowRanges[Morning], windowRanges[Afternoon], windowRanges[Evening]}
+
+// partOf is the part of the day holding slot s; lunch belongs to the afternoon.
+func partOf(s int) int {
+	switch {
+	case s < parts[0].End:
+		return 0
+	case s < parts[2].Start:
+		return 1
+	}
+	return 2
 }
 
 // firstFit returns the first start in [lo, hi) where `boxes` consecutive slots are free.

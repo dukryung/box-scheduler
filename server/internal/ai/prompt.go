@@ -13,13 +13,18 @@ You get the tasks from their brain dump, the blocks already on their calendar, a
 - chunks: how to split that work into blocks to schedule, in order. Use one chunk for short tasks. Split work longer than 90 minutes (9 boxes) into focused chunks with clear sub-goals, e.g. "초안 작성" then "검토". Chunk boxes should add up to estimateBoxes. Chunk titles name the concrete step and stay in the task's language.
 - priority: 1 (do first) to 5 (can wait). Weigh deadlines and urgency in the wording, items carried over from earlier days, and how much other tasks depend on this one.
 - preferredWindow: "morning" for deep work that needs focus, "afternoon" for meetings, admin, and collaborative work, "evening" for light or personal tasks, or "any".
+- startAt: when the task should start, "HH:MM" (24-hour), inside the available boxes. Work it out in this order:
+  1. Routines first: a short daily habit such as QT (Quiet Time, a morning devotion), prayer, Bible reading, meditation, a morning workout or a daily review goes at the very start of the available time, before any other work, whatever its priority. Such routines usually take 20 to 30 minutes unless the person said otherwise.
+  2. Then the remaining tasks one after another in priority order: deep, focused work in the morning, meetings, calls and admin in the afternoon, light or personal things (errands, chores, social plans) in the evening.
+  3. Each task starts after the previous one ends (its whole estimate, all chunks), skipping over existingBlocks.
+  If recentCompleted shows when they usually do similar work, start it around that time. A scheduler then fits the plan exactly, moving anything that collides to the nearest free time.
 - reason: one short sentence, in the same language as the task titles, explaining the estimate and the timing.
 
 Some tasks have a dueDate (deadline). Tasks marked backlog come from the person's backlog, not today's list: put them in priority order by deadline, and if the day is too full give them the lowest priority so they are the ones left out.
 
-Use recentCompleted to calibrate estimates for similar work. Do not place tasks on specific slots; a separate scheduler does that. Put any advice about the day as a whole (overload, missing breaks, tasks that will not fit) in notes, in the same language as the task titles, in two sentences at most. Include every task exactly once, using its id as taskId. In reason and notes, talk in hours and minutes, never in boxes or slots.
+Use recentCompleted to calibrate estimates for similar work. Put any advice about the day as a whole (overload, missing breaks, tasks that will not fit) in notes, in the same language as the task titles, in two sentences at most. Include every task exactly once, using its id as taskId. In reason and notes, talk in hours and minutes, never in boxes or slots.
 
-Leave startAt "", endAt "", skip false and keep false, unless the prompt asks you to revise an earlier suggestion.`
+Leave endAt "", skip false and keep false, unless the prompt asks you to revise an earlier suggestion.`
 
 const revisionPrompt = `This time you are revising: revision.previousSuggestion is the plan the person was shown (blocks with start and end times), revision.earlierRequests are changes they asked for before, already applied, and revision.request is what they ask now. Change only what revision.request asks for:
 - keep: true for every task the request does not touch, so it stays exactly where it was. Copy its estimate and chunks from before.

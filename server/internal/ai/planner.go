@@ -30,10 +30,12 @@ type BlockInput struct {
 	Title string `json:"title"`
 }
 
-// HistoryItem is a recently completed block, to calibrate duration estimates.
+// HistoryItem is a recently completed block, to calibrate duration estimates
+// and see when in the day the person usually does such work.
 type HistoryItem struct {
 	Title string `json:"title"`
 	Boxes int    `json:"boxes"`
+	Start string `json:"start"` // HH:MM
 }
 
 type PlanRequest struct {
@@ -75,12 +77,14 @@ type TaskPlan struct {
 	Window        string  `json:"preferredWindow"`
 	Chunks        []Chunk `json:"chunks"`
 	Reason        string  `json:"reason"`
-	// Set only when revising: a start (and maybe end) time the person asked for
-	// ("HH:MM"), a task they asked to leave out, or a task the request does not touch.
+	// StartAt is when the task should start ("HH:MM"): the AI's choice in a
+	// first plan, a time the person asked for when revising.
 	StartAt string `json:"startAt"`
-	EndAt   string `json:"endAt"`
-	Skip    bool   `json:"skip"`
-	Keep    bool   `json:"keep"`
+	// Set only when revising: an asked-for end time, a task they asked to leave
+	// out, or a task the request does not touch.
+	EndAt string `json:"endAt"`
+	Skip  bool   `json:"skip"`
+	Keep  bool   `json:"keep"`
 }
 
 type Plan struct {

@@ -146,7 +146,7 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 		req.Blocks = append(req.Blocks, ai.BlockInput{Start: b.StartSlot, End: b.EndSlot, Title: b.Title})
 	}
 	for _, b := range history {
-		req.History = append(req.History, ai.HistoryItem{Title: b.Title, Boxes: b.EndSlot - b.StartSlot})
+		req.History = append(req.History, ai.HistoryItem{Title: b.Title, Boxes: b.EndSlot - b.StartSlot, Start: slotText(b.StartSlot)})
 	}
 
 	started := time.Now()
@@ -353,7 +353,11 @@ func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput, rv *reviseRequest) ([
 		}
 
 		t := scheduler.Task{ID: in.ID, Priority: tp.Priority, Window: scheduler.Window(tp.Window), Chunks: chunks, Reason: tp.Reason}
-		if at, ok := clockSlot(tp.StartAt); ok && rv != nil {
+		at, timed := clockSlot(tp.StartAt)
+		if timed && rv == nil {
+			t.Prefer = &at // the AI's own choice: a starting point, not a promise
+		}
+		if timed && rv != nil {
 			t.StartAt = &at
 			// "9시에서 9시 30분까지": the asked-for span sets the length.
 			if end, ok := clockSlot(tp.EndAt); ok && end > at && end-at != chunkBoxes(chunks) {
