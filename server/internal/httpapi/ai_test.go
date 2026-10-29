@@ -82,6 +82,19 @@ func TestToSchedulerTasksRevision(t *testing.T) {
 	}
 }
 
+func TestToSchedulerTasksAskedForSpan(t *testing.T) {
+	inputs := []ai.TaskInput{{ID: "qt", Title: "QT 하기"}}
+	rv := &reviseRequest{Request: "QT 하기 시간을 오전 9시에서 9시 30분까지로 수정해줘", Previous: []shownBlock{{TaskID: "qt", Title: "QT 하기", StartSlot: 108, EndSlot: 114}}}
+	plan := ai.Plan{Tasks: []ai.TaskPlan{{TaskID: "qt", EstimateBoxes: 6, Chunks: []ai.Chunk{{Title: "QT 하기", Boxes: 6}}, StartAt: "09:00", EndAt: "09:30"}}}
+	tasks, estimates, _ := toSchedulerTasks(plan, inputs, rv)
+	if len(tasks) != 1 || *tasks[0].StartAt != 54 || len(tasks[0].Chunks) != 1 || tasks[0].Chunks[0].Boxes != 3 {
+		t.Fatalf("tasks = %+v", tasks)
+	}
+	if estimates[0].EstimateBoxes != 3 {
+		t.Fatalf("estimates = %+v", estimates)
+	}
+}
+
 func TestToRevisionChecksInput(t *testing.T) {
 	if _, msg := toRevision(&reviseRequest{Request: "  "}); msg == "" {
 		t.Fatal("empty request accepted")

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Fake returns a predictable plan without calling Claude: each task keeps its
@@ -44,10 +45,14 @@ func reviseFake(plan *Plan, req PlanRequest) {
 		titles[t.ID] = t.Title
 	}
 	shownAt := map[string]string{}
+	shownChunks := map[string][]Chunk{}
 	for _, b := range req.Revision.Previous {
 		if _, ok := shownAt[b.TaskID]; !ok {
 			shownAt[b.TaskID] = b.Start
 		}
+		s, _ := time.Parse("15:04", b.Start)
+		e, _ := time.Parse("15:04", b.End)
+		shownChunks[b.TaskID] = append(shownChunks[b.TaskID], Chunk{Title: b.Title, Boxes: int(e.Sub(s).Minutes()) / 10})
 	}
 	for i := range plan.Tasks {
 		tp := &plan.Tasks[i]
@@ -62,6 +67,9 @@ func reviseFake(plan *Plan, req PlanRequest) {
 			}
 			if m := fakeHour.FindStringSubmatch(clause); m != nil {
 				tp.StartAt = fmt.Sprintf("%02s:00", m[1])
+				if c := shownChunks[tp.TaskID]; len(c) > 0 { // moved as it was shown
+					tp.Chunks = c
+				}
 			}
 			var mins int
 			if _, err := fmt.Sscanf(clause[strings.LastIndex(clause, " ")+1:], "%d분", &mins); err == nil && mins > 0 {

@@ -129,3 +129,23 @@ func TestPlaceShiftsAnAskedForTimeThatIsTaken(t *testing.T) {
 		t.Fatalf("early ask = %+v", placed[0].Range)
 	}
 }
+
+func TestPlaceAskedForTimeWinsOverPinned(t *testing.T) {
+	// The real case: QT asked for 09:00-09:30, where a suggested (pinned) block sat.
+	at := 54
+	tasks := []Task{
+		{ID: "bs", Chunks: []Chunk{{"설계", 9}, {"구현", 8}}, Pinned: []Range{{54, 63}, {64, 72}}},
+		{ID: "sr", Chunks: []Chunk{{"stocks", 12}}, Pinned: []Range{{78, 90}}},
+		{ID: "cc", Chunks: []Chunk{{"청첩장", 3}}, Pinned: []Range{{90, 93}}},
+		{ID: "qt", Chunks: []Chunk{{"QT", 3}}, StartAt: &at},
+	}
+	placed, unplaced := Place(tasks, Options{From: 54, To: 144})
+	if got, want := ranges(placed), "QT:54-57 설계:57-66 구현:66-74 stocks:78-90 청첩장:90-93 "; got != want || len(unplaced) != 0 {
+		t.Fatalf("placed = %q, want %q (unplaced %v)", got, want, unplaced)
+	}
+	for _, p := range placed {
+		if p.Shifted {
+			t.Fatalf("%s marked shifted: only a taken asked-for time is", p.Title)
+		}
+	}
+}

@@ -355,6 +355,11 @@ func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput, rv *reviseRequest) ([
 		t := scheduler.Task{ID: in.ID, Priority: tp.Priority, Window: scheduler.Window(tp.Window), Chunks: chunks, Reason: tp.Reason}
 		if at, ok := clockSlot(tp.StartAt); ok && rv != nil {
 			t.StartAt = &at
+			// "9시에서 9시 30분까지": the asked-for span sets the length.
+			if end, ok := clockSlot(tp.EndAt); ok && end > at && end-at != chunkBoxes(chunks) {
+				estimate = end - at
+				t.Chunks = []scheduler.Chunk{{Title: in.Title, Boxes: estimate}}
+			}
 		}
 		tasks = append(tasks, t)
 		if in.EstimateBoxes == nil {
@@ -386,6 +391,14 @@ func chunkTitle(task, chunk string, chunks int) string {
 		return task
 	}
 	return task + " · " + chunk
+}
+
+func chunkBoxes(chunks []scheduler.Chunk) int {
+	n := 0
+	for _, c := range chunks {
+		n += c.Boxes
+	}
+	return n
 }
 
 func clampBoxes(n int) int {

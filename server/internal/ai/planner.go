@@ -75,9 +75,10 @@ type TaskPlan struct {
 	Window        string  `json:"preferredWindow"`
 	Chunks        []Chunk `json:"chunks"`
 	Reason        string  `json:"reason"`
-	// Set only when revising: a start time the person asked for ("HH:MM"), a
-	// task they asked to leave out, or a task the request does not touch.
+	// Set only when revising: a start (and maybe end) time the person asked for
+	// ("HH:MM"), a task they asked to leave out, or a task the request does not touch.
 	StartAt string `json:"startAt"`
+	EndAt   string `json:"endAt"`
 	Skip    bool   `json:"skip"`
 	Keep    bool   `json:"keep"`
 }

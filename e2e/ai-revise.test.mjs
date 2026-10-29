@@ -61,21 +61,30 @@ try {
   check((await row('E2E 운동').textContent()).includes('길이 바뀜'), 'resized block is marked')
   check((await page.getByRole('list', { name: '수정 요청 기록' }).locator('li').count()) === 2, 'both requests listed')
 
-  // 3. An asked-for time that is taken goes to the nearest free time, and says so.
+  // 3. An asked-for time wins over another suggested block, which moves aside.
   await input.fill('E2E 기획서 20시로')
   await input.press('Enter')
   await page.getByRole('list', { name: '수정 요청 기록' }).getByText('E2E 기획서 20시로').waitFor()
-  check((await timeOf('E2E 기획서')) === '20:30–21:30', `taken time shifts to the next free one (${await timeOf('E2E 기획서')})`)
-  check(await row('E2E 기획서').getByText('요청한 시간이 차 있어서').isVisible(), 'shift is explained')
+  check((await timeOf('E2E 기획서')) === '20:00–21:00', `asked-for time taken by a suggestion is still given (${await timeOf('E2E 기획서')})`)
+  check((await timeOf('E2E 운동')) === '21:00–21:30', `the suggestion that was there moves aside (${await timeOf('E2E 운동')})`)
+  check((await row('E2E 운동').textContent()).includes('옮김'), 'moved-aside block is marked')
+  check((await row('E2E 기획서').getByText('요청한 시간이 차 있어서').count()) === 0, 'no shift notice when the time was given')
 
-  // 4. Applying saves the revised plan; the switched-off block stays out.
+  // 4. A time taken by a saved block goes to the nearest free time, and says so.
+  await input.fill('E2E 운동 9시로')
+  await input.press('Enter')
+  await page.getByRole('list', { name: '수정 요청 기록' }).getByText('E2E 운동 9시로').waitFor()
+  check((await timeOf('E2E 운동')) === '09:30–10:00', `saved block keeps its time; asked one goes next to it (${await timeOf('E2E 운동')})`)
+  check(await row('E2E 운동').getByText('요청한 시간이 차 있어서').isVisible(), 'shift is explained')
+
+  // Applying saves the revised plan.
   await row('E2E 기획서').getByRole('checkbox').check()
   await page.getByRole('button', { name: '2개 블록 적용' }).click()
   await page.getByText('AI 제안 2개를 시간표에 추가했어요').waitFor()
   const day = await json('GET', `/days/${D}`)
   const at = (title) => day.blocks.find((b) => b.title === title)
-  check(at('E2E 운동')?.startSlot === 120 && at('E2E 운동')?.endSlot === 123, 'revised block saved at 20:00–20:30')
-  check(at('E2E 기획서')?.startSlot === 123, 'shifted block saved at 20:30')
+  check(at('E2E 기획서')?.startSlot === 120 && at('E2E 기획서')?.endSlot === 126, 'asked-for block saved at 20:00–21:00')
+  check(at('E2E 운동')?.startSlot === 57 && at('E2E 운동')?.endSlot === 60, 'shifted block saved at 09:30–10:00')
   check(!at('E2E 메일') && !overlaps(day.blocks), 'left-out task not saved, nothing overlaps')
 
   // 5. API: empty or overlong requests are refused.

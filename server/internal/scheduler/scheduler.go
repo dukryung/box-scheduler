@@ -61,7 +61,8 @@ type Placement struct {
 	Title  string
 	Range  Range
 	Reason string
-	// Shifted: the asked-for time was taken, so it went to the nearest free time.
+	// Shifted: the asked-for time was taken (by a saved block), so it went to the
+	// nearest free time.
 	Shifted bool
 }
 
@@ -106,15 +107,22 @@ func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 		}
 		return lastFit(&free, from, start+boxes, boxes)
 	}
-	// What the person fixed goes first: tasks kept as they were, then asked-for times.
+	// What the person fixed goes first: times they asked for win over everything
+	// else suggested, then tasks kept as they were (moving aside if an asked-for
+	// time took their place), then the rest.
+	const (
+		asked = iota
+		pinned
+		planned
+	)
 	stage := func(t Task) int {
 		switch {
-		case len(t.Pinned) == len(t.Chunks) && len(t.Pinned) > 0:
-			return 0
 		case t.StartAt != nil:
-			return 1
+			return asked
+		case len(t.Pinned) == len(t.Chunks) && len(t.Pinned) > 0:
+			return pinned
 		}
-		return 2
+		return planned
 	}
 	ordered := slices.Clone(tasks)
 	slices.SortStableFunc(ordered, func(a, b Task) int {
@@ -123,12 +131,12 @@ func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 
 	placed := []Placement{}
 	unplaced := []Unplaced{}
-	take := func(t Task, c Chunk, start, boxes int, shifted bool) int {
+	take := func(t Task, c Chunk, start, boxes int, shifted bool, breather bool) int {
 		end := start + boxes
 		for s := start; s < end; s++ {
 			free[s] = false
 		}
-		if boxes >= focusBreakBoxes && end < SlotsPerDay {
+		if breather && boxes >= focusBreakBoxes && end < SlotsPerDay {
 			free[end] = false // keep a short break after a long focus block
 		}
 		placed = append(placed, Placement{TaskID: t.ID, Title: c.Title, Range: Range{start, end}, Reason: t.Reason, Shifted: shifted})
@@ -142,12 +150,11 @@ func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 			var start int
 			var found, shifted bool
 			switch st {
-			case 0:
+			case pinned:
 				want := t.Pinned[i]
 				boxes = min(max(want.End-want.Start, 1), SlotsPerDay)
 				start, found = near(want.Start, boxes)
-				shifted = found && start != want.Start
-			case 1:
+			case asked:
 				want := max(*t.StartAt, cursor)
 				start, found = near(want, boxes)
 				shifted = found && i == 0 && start != *t.StartAt
@@ -165,7 +172,8 @@ func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 				unplaced = append(unplaced, Unplaced{TaskID: t.ID, Title: c.Title, Boxes: boxes})
 				continue
 			}
-			cursor = take(t, c, start, boxes, shifted)
+			// Fixed times sit as asked, without the break a planned block keeps after it.
+			cursor = take(t, c, start, boxes, shifted, st == planned)
 		}
 	}
 
