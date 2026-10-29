@@ -24,7 +24,7 @@ func TestToSchedulerTasksValidatesPlan(t *testing.T) {
 		{TaskID: "zzz", EstimateBoxes: 2, Priority: 1}, // unknown id: ignored
 	}}
 
-	tasks, estimates, missing := toSchedulerTasks(plan, inputs, nil)
+	tasks, estimates, missing := toSchedulerTasks(plan, inputs, nil, false)
 
 	if len(tasks) != 2 {
 		t.Fatalf("tasks = %+v", tasks)
@@ -61,7 +61,7 @@ func TestToSchedulerTasksRevision(t *testing.T) {
 		{TaskID: "d", EstimateBoxes: 3, Priority: 4, Keep: true},
 	}}
 
-	tasks, estimates, missing := toSchedulerTasks(plan, inputs, rv)
+	tasks, estimates, missing := toSchedulerTasks(plan, inputs, rv, false)
 
 	if len(tasks) != 2 || len(missing) != 0 {
 		t.Fatalf("tasks = %+v, missing = %+v (a skipped task is not missing)", tasks, missing)
@@ -76,7 +76,7 @@ func TestToSchedulerTasksRevision(t *testing.T) {
 		t.Fatalf("estimates = %+v", estimates)
 	}
 	// Outside a revision these fields mean nothing.
-	plain, _, _ := toSchedulerTasks(plan, inputs, nil)
+	plain, _, _ := toSchedulerTasks(plan, inputs, nil, false)
 	if len(plain) != 4 || plain[2].StartAt != nil || *plain[2].Prefer != 120 || plain[0].Pinned != nil {
 		t.Fatalf("plain = %+v", plain)
 	}
@@ -86,7 +86,7 @@ func TestToSchedulerTasksAskedForSpan(t *testing.T) {
 	inputs := []ai.TaskInput{{ID: "qt", Title: "QT 하기"}}
 	rv := &reviseRequest{Request: "QT 하기 시간을 오전 9시에서 9시 30분까지로 수정해줘", Previous: []shownBlock{{TaskID: "qt", Title: "QT 하기", StartSlot: 108, EndSlot: 114}}}
 	plan := ai.Plan{Tasks: []ai.TaskPlan{{TaskID: "qt", EstimateBoxes: 6, Chunks: []ai.Chunk{{Title: "QT 하기", Boxes: 6}}, StartAt: "09:00", EndAt: "09:30"}}}
-	tasks, estimates, _ := toSchedulerTasks(plan, inputs, rv)
+	tasks, estimates, _ := toSchedulerTasks(plan, inputs, rv, false)
 	if len(tasks) != 1 || *tasks[0].StartAt != 54 || len(tasks[0].Chunks) != 1 || tasks[0].Chunks[0].Boxes != 3 {
 		t.Fatalf("tasks = %+v", tasks)
 	}
@@ -101,12 +101,34 @@ func TestToSchedulerTasksTakesTheAIsTimes(t *testing.T) {
 		{TaskID: "qt", EstimateBoxes: 3, Priority: 1, StartAt: "09:00"},
 		{TaskID: "x", EstimateBoxes: 6, Priority: 2, StartAt: "아침"}, // unreadable: window only
 	}}
-	tasks, _, _ := toSchedulerTasks(plan, inputs, nil)
+	tasks, _, _ := toSchedulerTasks(plan, inputs, nil, false)
 	if tasks[0].Prefer == nil || *tasks[0].Prefer != 54 || tasks[0].StartAt != nil {
 		t.Fatalf("qt = %+v", tasks[0])
 	}
 	if tasks[1].Prefer != nil {
 		t.Fatalf("x = %+v", tasks[1])
+	}
+}
+
+func TestToSchedulerTasksRespacesKeptTasks(t *testing.T) {
+	inputs := []ai.TaskInput{{ID: "a", Title: "기획서"}}
+	rv := &reviseRequest{Request: "사이사이 10분씩 쉬게 해줘", Previous: []shownBlock{{TaskID: "a", Title: "기획서", StartSlot: 60, EndSlot: 66}}}
+	plan := ai.Plan{Tasks: []ai.TaskPlan{{TaskID: "a", EstimateBoxes: 6, Keep: true}}}
+	tasks, _, _ := toSchedulerTasks(plan, inputs, rv, true)
+	if k := tasks[0]; k.Pinned != nil || k.Prefer == nil || *k.Prefer != 60 || k.Chunks[0].Boxes != 6 {
+		t.Fatalf("kept = %+v", k)
+	}
+}
+
+func TestBreakRules(t *testing.T) {
+	if !asksForBreak("사이사이 10분씩 쉬게 해줘") || !asksForBreak("쉬는 시간 없이 붙여줘") || asksForBreak("운동은 8시로") {
+		t.Fatal("asksForBreak")
+	}
+	if !validBreak(0) || !validBreak(30) || validBreak(15) || validBreak(70) || validBreak(-10) {
+		t.Fatal("validBreak")
+	}
+	if breakBoxes(0) != 0 || breakBoxes(10) != 1 || breakBoxes(15) != 2 {
+		t.Fatal("breakBoxes")
 	}
 }
 

@@ -120,6 +120,8 @@ export interface Suggestion {
   /** AI estimates for tasks that had none; saved when the plan is applied. */
   estimates: Array<{ taskId: string; estimateBoxes: number }>
   notes: string
+  /** Minutes kept free between blocks in this suggestion. */
+  breakMinutes: number
 }
 
 /** What applying a plan saved; blocks move or drop out when the day changed meanwhile. */

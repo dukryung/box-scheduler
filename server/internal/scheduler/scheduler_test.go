@@ -38,17 +38,20 @@ func TestPlaceSkipsOccupiedAndKeepsChunkOrder(t *testing.T) {
 	}
 }
 
-func TestPlaceKeepsBreakAfterLongFocus(t *testing.T) {
+func TestPlaceKeepsABreakOnlyWhenAskedFor(t *testing.T) {
 	tasks := []Task{
 		{ID: "a", Priority: 1, Window: Any, Chunks: []Chunk{{"deep", 6}}},
 		{ID: "b", Priority: 2, Window: Any, Chunks: []Chunk{{"next", 1}}},
 	}
-	placed, _ := Place(tasks, Options{From: 60, To: 144})
-
-	if got, want := ranges(placed), "deep:60-66 next:67-68 "; got != want {
-		t.Fatalf("placed = %q, want %q", got, want)
+	if got, want := ranges(first(Place(tasks, Options{From: 60, To: 144}))), "deep:60-66 next:66-67 "; got != want {
+		t.Fatalf("no break: placed = %q, want %q", got, want)
+	}
+	if got, want := ranges(first(Place(tasks, Options{From: 60, To: 144, Gap: 1}))), "deep:60-66 next:67-68 "; got != want {
+		t.Fatalf("break: placed = %q, want %q", got, want)
 	}
 }
+
+func first(p []Placement, _ []Unplaced) []Placement { return p }
 
 func TestPlaceFallsBackOutsideWindowThenReportsUnplaced(t *testing.T) {
 	tasks := []Task{
@@ -153,7 +156,7 @@ func TestPlaceAskedForTimeWinsOverPinned(t *testing.T) {
 func TestPlaceFollowsTheAIsTimes(t *testing.T) {
 	at := func(s int) *int { return &s }
 	tasks := []Task{
-		{ID: "work", Priority: 1, Chunks: []Chunk{{"설계", 9}, {"구현", 6}}, Prefer: at(57)},
+		{ID: "work", Priority: 1, Chunks: []Chunk{{"설계", 10}, {"구현", 6}}, Prefer: at(57)},
 		{ID: "qt", Priority: 2, Chunks: []Chunk{{"QT", 3}}, Prefer: at(54)},
 		// Asks for a time already taken by "work": goes after it, still before lunch;
 		// 구현 does not fit before lunch, so it starts the afternoon.
@@ -161,7 +164,7 @@ func TestPlaceFollowsTheAIsTimes(t *testing.T) {
 		{ID: "loose", Priority: 4, Window: Afternoon, Chunks: []Chunk{{"loose", 2}}},
 	}
 	placed, unplaced := Place(tasks, Options{From: 54, To: 108, Occupied: []Range{{78, 81}}})
-	if got, want := ranges(placed), "QT:54-57 설계:57-66 메일:67-69 구현:81-87 loose:88-90 "; got != want || len(unplaced) != 0 {
+	if got, want := ranges(placed), "QT:54-57 설계:57-67 메일:67-69 구현:81-87 loose:87-89 "; got != want || len(unplaced) != 0 {
 		t.Fatalf("placed = %q, want %q (unplaced %v)", got, want, unplaced)
 	}
 	// The AI's times stay inside [From, To).
@@ -191,8 +194,38 @@ func TestPlaceKeepsATimedTasksChunksInOrder(t *testing.T) {
 	at := 54
 	// The first chunk only fits in the afternoon; the second must not go back to the morning gap.
 	tasks := []Task{{ID: "bs", Chunks: []Chunk{{"설계", 12}, {"리뷰", 6}}, Prefer: &at}}
-	placed, unplaced := Place(tasks, Options{From: 54, To: 120, Occupied: []Range{{54, 60}, {67, 72}, {78, 84}, {102, 120}}})
+	placed, unplaced := Place(tasks, Options{From: 54, To: 120, Occupied: []Range{{54, 60}, {67, 72}, {78, 84}, {101, 120}}})
 	if got := ranges(placed); got != "설계:84-96 " || len(unplaced) != 1 {
 		t.Fatalf("placed = %q, unplaced = %v (리뷰 must not land in the 10:00 gap before 설계)", got, unplaced)
+	}
+}
+
+func TestPlaceKeepsTheAskedForBreakBetweenBlocks(t *testing.T) {
+	at := func(s int) *int { return &s }
+	tasks := []Task{
+		{ID: "bs", Priority: 2, Chunks: []Chunk{{"box", 12}}, Prefer: at(61)},
+		{ID: "sr", Priority: 3, Chunks: []Chunk{{"stocks", 12}}, Prefer: at(66)},
+		{ID: "cc", Priority: 4, Chunks: []Chunk{{"청첩장", 6}}, Prefer: at(114)},
+		{ID: "qt", Priority: 1, Chunks: []Chunk{{"QT", 3}}, Prefer: at(60)},
+	}
+	// Ten minutes after each block, and before and after the 14:00 meeting.
+	placed, _ := Place(tasks, Options{From: 54, To: 132, Occupied: []Range{{84, 90}}, Gap: 1})
+	if got, want := ranges(placed), "QT:54-57 box:58-70 stocks:91-103 청첩장:108-114 "; got != want {
+		t.Fatalf("placed = %q, want %q", got, want)
+	}
+}
+
+func TestPlaceDropsTheBreakRatherThanTheBlock(t *testing.T) {
+	// Only 09:00-09:30 is free before the saved block: it fits there without the break.
+	tasks := []Task{{ID: "a", Chunks: []Chunk{{"메일", 3}}}}
+	placed, unplaced := Place(tasks, Options{From: 54, To: 60, Occupied: []Range{{57, 60}}, Gap: 2})
+	if got := ranges(placed); got != "메일:54-57 " || len(unplaced) != 0 {
+		t.Fatalf("placed = %q, unplaced = %v", got, unplaced)
+	}
+	// An asked-for time sits as asked, right after a saved block.
+	nine := 60
+	placed, _ = Place([]Task{{ID: "b", Chunks: []Chunk{{"운동", 3}}, StartAt: &nine}}, Options{From: 54, To: 132, Occupied: []Range{{57, 60}}, Gap: 2})
+	if got := ranges(placed); got != "운동:60-63 " {
+		t.Fatalf("asked = %q", got)
 	}
 }

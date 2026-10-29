@@ -13,7 +13,7 @@ import (
 type Fake struct{}
 
 func (Fake) Plan(_ context.Context, req PlanRequest) (Plan, error) {
-	plan := Plan{Tasks: []TaskPlan{}, Notes: "테스트용 제안이에요."}
+	plan := Plan{Tasks: []TaskPlan{}, Notes: "테스트용 제안이에요.", BreakMinutes: -1}
 	for i, t := range req.Tasks {
 		boxes := 3
 		if t.EstimateBoxes != nil {
@@ -38,7 +38,8 @@ var fakeHour = regexp.MustCompile(`(\d{1,2})시`)
 
 // reviseFake reads revision requests as ", "-separated clauses naming a task:
 // "<title> 빼줘" leaves it out, "<title> N시로" asks for N:00, and
-// "<title> N분" makes it N minutes where it was. Tasks no clause names are kept as they were.
+// "<title> N분" makes it N minutes where it was, and "쉬는 시간 N분" asks for an
+// N-minute break between blocks. Tasks no clause names are kept as they were.
 func reviseFake(plan *Plan, req PlanRequest) {
 	titles := map[string]string{}
 	for _, t := range req.Tasks {
@@ -53,6 +54,12 @@ func reviseFake(plan *Plan, req PlanRequest) {
 		s, _ := time.Parse("15:04", b.Start)
 		e, _ := time.Parse("15:04", b.End)
 		shownChunks[b.TaskID] = append(shownChunks[b.TaskID], Chunk{Title: b.Title, Boxes: int(e.Sub(s).Minutes()) / 10})
+	}
+	for _, clause := range strings.Split(req.Revision.Request, ", ") {
+		var mins int
+		if _, err := fmt.Sscanf(strings.TrimPrefix(clause, "쉬는 시간 "), "%d분", &mins); err == nil && strings.HasPrefix(clause, "쉬는 시간 ") {
+			plan.BreakMinutes = mins
+		}
 	}
 	for i := range plan.Tasks {
 		tp := &plan.Tasks[i]

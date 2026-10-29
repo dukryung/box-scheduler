@@ -35,8 +35,8 @@ var windowRanges = map[Window]Range{
 	Any:       {0, SlotsPerDay},
 }
 
-// focusBreakBoxes is how long a chunk must be before a one-box break is kept after it.
-const focusBreakBoxes = 6
+// MaxGap is the longest break between blocks: an hour.
+const MaxGap = 6
 
 type Chunk struct {
 	Title string
@@ -82,6 +82,10 @@ type Options struct {
 	// may run to the end of the day.
 	From, To int
 	Occupied []Range
+	// Gap is the break, in boxes, kept between planned blocks and anything next
+	// to them. Times the person fixed sit as asked, and a block that only fits
+	// without the break still goes in.
+	Gap int
 }
 
 // Place puts each task where the plan says: an asked-for or kept time first,
@@ -98,25 +102,34 @@ func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 	for s := from; s < SlotsPerDay; s++ {
 		free[s] = true
 	}
-	for _, r := range opt.Occupied {
+	// roomy is free time at least gap boxes away from every block.
+	gap := min(max(opt.Gap, 0), MaxGap)
+	roomy := free
+	busy := func(r Range) {
 		for s := max(r.Start, 0); s < min(r.End, SlotsPerDay); s++ {
 			free[s] = false
 		}
+		for s := max(r.Start-gap, 0); s < min(r.End+gap, SlotsPerDay); s++ {
+			roomy[s] = false
+		}
+	}
+	for _, r := range opt.Occupied {
+		busy(r)
 	}
 
-	// nearIn is the free run of boxes in [lo, hi) closest to start, later first.
-	nearIn := func(start, boxes, lo, hi int) (int, bool) {
+	// nearIn is the run of boxes in [lo, hi) closest to start, later first.
+	nearIn := func(f *[SlotsPerDay]bool, start, boxes, lo, hi int) (int, bool) {
 		start = min(max(start, lo), hi-boxes)
 		if start < lo {
 			return 0, false
 		}
-		if at, ok := firstFit(&free, start, hi, boxes); ok {
+		if at, ok := firstFit(f, start, hi, boxes); ok {
 			return at, true
 		}
-		return lastFit(&free, lo, start+boxes, boxes)
+		return lastFit(f, lo, start+boxes, boxes)
 	}
 	// Fixed times may run to the end of the day, never before From.
-	near := func(start, boxes int) (int, bool) { return nearIn(start, boxes, from, SlotsPerDay) }
+	near := func(start, boxes int) (int, bool) { return nearIn(&free, start, boxes, from, SlotsPerDay) }
 	// What the person fixed goes first: times they asked for win over everything
 	// else suggested, then tasks kept as they were (moving aside if an asked-for
 	// time took their place). Then the AI's timed plan, earliest first, and last
@@ -162,16 +175,42 @@ func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 	// Where the previous task in the AI's order ended, per part of the day, so a
 	// long task running into the evening does not drag the morning's tasks along.
 	lastEnd := [3]int{from, from, from}
-	take := func(t Task, c Chunk, start, boxes int, shifted bool, breather bool) int {
+	take := func(t Task, c Chunk, start, boxes int, shifted bool) int {
 		end := start + boxes
-		for s := start; s < end; s++ {
-			free[s] = false
-		}
-		if breather && boxes >= focusBreakBoxes && end < SlotsPerDay {
-			free[end] = false // keep a short break after a long focus block
-		}
+		busy(Range{start, end})
 		placed = append(placed, Placement{TaskID: t.ID, Title: c.Title, Range: Range{start, end}, Reason: t.Reason, Shifted: shifted})
 		return end
+	}
+	// plan finds a place for chunk i of a timed or planned task within f.
+	plan := func(f *[SlotsPerDay]bool, t Task, i, cursor, boxes int) (start int, found bool) {
+		if t.Prefer == nil {
+			w, ok := windowRanges[t.Window]
+			if !ok {
+				w = windowRanges[Any]
+			}
+			if start, found = firstFit(f, max(cursor, w.Start, from), min(w.End, to), boxes); !found {
+				start, found = firstFit(f, cursor, to, boxes)
+			}
+			return start, found
+		}
+		p := partOf(*t.Prefer)
+		lo := max(parts[p].Start, lastEnd[p], from)
+		if i > 0 {
+			lo = max(lo, cursor)
+		}
+		// Its part of the day, or the start of a later one, before anywhere at all.
+		for p := partOf(lo); p < len(parts) && !found; p++ {
+			lo = max(lo, lastEnd[p])
+			start, found = firstFit(f, max(lo, parts[p].Start), min(parts[p].End, to), boxes)
+		}
+		if !found {
+			floor := from
+			if i > 0 {
+				floor = cursor // a task's chunks keep their order
+			}
+			start, found = nearIn(f, lo, boxes, floor, to)
+		}
+		return start, found
 	}
 	for _, t := range ordered {
 		cursor := from
@@ -189,40 +228,17 @@ func Place(tasks []Task, opt Options) ([]Placement, []Unplaced) {
 				want := max(*t.StartAt, cursor)
 				start, found = near(want, boxes)
 				shifted = found && i == 0 && start != *t.StartAt
-			case timed:
-				p := partOf(*t.Prefer)
-				lo := max(parts[p].Start, lastEnd[p], from)
-				if i > 0 {
-					lo = max(lo, cursor)
-				}
-				// Its part of the day, or the start of a later one, before anywhere at all.
-				for p := partOf(lo); p < len(parts) && !found; p++ {
-					lo = max(lo, lastEnd[p])
-					start, found = firstFit(&free, max(lo, parts[p].Start), min(parts[p].End, to), boxes)
-				}
-				if !found {
-					floor := from
-					if i > 0 {
-						floor = cursor // a task's chunks keep their order
-					}
-					start, found = nearIn(lo, boxes, floor, to)
-				}
 			default:
-				w, ok := windowRanges[t.Window]
-				if !ok {
-					w = windowRanges[Any]
-				}
-				start, found = firstFit(&free, max(cursor, w.Start, from), min(w.End, to), boxes)
-				if !found {
-					start, found = firstFit(&free, cursor, to, boxes)
+				// With a break between blocks, but without one rather than not at all.
+				if start, found = plan(&roomy, t, i, cursor, boxes); !found && gap > 0 {
+					start, found = plan(&free, t, i, cursor, boxes)
 				}
 			}
 			if !found {
 				unplaced = append(unplaced, Unplaced{TaskID: t.ID, Title: c.Title, Boxes: boxes})
 				continue
 			}
-			// Fixed times sit as asked, without the break a planned block keeps after it.
-			cursor = take(t, c, start, boxes, shifted, st >= timed)
+			cursor = take(t, c, start, boxes, shifted)
 			if st == timed {
 				p := partOf(start)
 				lastEnd[p] = max(lastEnd[p], cursor)

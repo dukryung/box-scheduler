@@ -19,6 +19,30 @@ export function useAISuggestion(date: string) {
   const [diff, setDiff] = useState<SuggestionDiff | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const paramsRef = useRef({ fromSlot: 0, toSlot: 0, includeBacklog: true })
+  // The break between blocks: the panel's setting, until a change request asks for another one.
+  const [breakMinutes, setBreakMinutes] = useState(0)
+  useEffect(() => {
+    let live = true
+    api
+      .planBreak()
+      .then((r) => live && setBreakMinutes(r.breakMinutes))
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [])
+
+  /** Remembers the break for this account; the next suggestion uses it. */
+  async function chooseBreak(minutes: number) {
+    const before = breakMinutes
+    setBreakMinutes(minutes)
+    try {
+      await api.setPlanBreak(minutes)
+    } catch (e) {
+      setBreakMinutes(before)
+      setError((e as Error).message)
+    }
+  }
 
   const reset = useCallback(() => {
     abortRef.current?.abort()
@@ -42,7 +66,7 @@ export function useAISuggestion(date: string) {
     setStatus('loading')
     setError(null)
     try {
-      const res = await api.aiSuggest(date, fromSlot, toSlot, includeBacklog, controller.signal)
+      const res = await api.aiSuggest(date, { fromSlot, toSlot, includeBacklog, breakMinutes }, controller.signal)
       setSuggestion(res)
       setRejected(new Set())
       setRequests([])
@@ -68,11 +92,12 @@ export function useAISuggestion(date: string) {
     const off = before.filter((b) => rejected.has(blockKey(b)))
     try {
       const { fromSlot, toSlot, includeBacklog } = paramsRef.current
-      const res = await api.aiSuggest(date, fromSlot, toSlot, includeBacklog, controller.signal, {
+      const revise = {
         previous: before.map((b) => ({ taskId: b.taskId, title: b.title, startSlot: b.startSlot, endSlot: b.endSlot, unchecked: rejected.has(blockKey(b)) })),
         earlier: requests,
         request: text,
-      })
+      }
+      const res = await api.aiSuggest(date, { fromSlot, toSlot, includeBacklog, breakMinutes: suggestion.breakMinutes, revise }, controller.signal)
       setSuggestion(res)
       setRejected(new Set(res.blocks.filter((b) => off.some((o) => o.taskId === b.taskId && o.title === b.title)).map(blockKey)))
       setRequests((r) => [...r, text])
@@ -133,6 +158,8 @@ export function useAISuggestion(date: string) {
     blockKey,
     requests,
     diff,
+    breakMinutes,
+    chooseBreak,
     request,
     revise,
     cancel,

@@ -73,6 +73,8 @@ type suggestResponse struct {
 	Unplaced  []unplacedTask   `json:"unplaced"`
 	Estimates []taskEstimate   `json:"estimates"`
 	Notes     string           `json:"notes"`
+	// BreakMinutes is the break kept between blocks in this suggestion.
+	BreakMinutes int `json:"breakMinutes"`
 }
 
 // aiSuggest asks the planner for a plan and places it into the day's free time.
@@ -91,6 +93,8 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 		IncludeBacklog bool `json:"includeBacklog"`
 		// Revise asks for changes to the suggestion the person was shown.
 		Revise *reviseRequest `json:"revise"`
+		// BreakMinutes between blocks; the account's setting when left out.
+		BreakMinutes *int `json:"breakMinutes"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
@@ -106,6 +110,20 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	uid := userID(r)
+	var breakMinutes int
+	switch {
+	case body.BreakMinutes == nil:
+		var err error
+		if breakMinutes, err = a.store.PlanBreak(r.Context(), uid); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+	case validBreak(*body.BreakMinutes):
+		breakMinutes = *body.BreakMinutes
+	default:
+		writeError(w, http.StatusBadRequest, breakRule)
+		return
+	}
 	blocks, err := a.store.ListBlocks(r.Context(), uid, date, date)
 	if err != nil {
 		writeStoreError(w, err)
@@ -136,7 +154,7 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 		Date: date, Weekday: koreanWeekdays[day.Weekday()],
 		From: body.FromSlot, To: body.ToSlot,
 		Tasks: candidates, Blocks: []ai.BlockInput{}, History: []ai.HistoryItem{},
-		Revision: revision,
+		Revision: revision, BreakMinutes: breakMinutes,
 	}
 	if len(req.Tasks) == 0 {
 		writeError(w, http.StatusBadRequest, "배치할 Brain Dump 항목이 없어요")
@@ -180,10 +198,17 @@ func (a *API) aiSuggest(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	tasks, estimates, missing := toSchedulerTasks(plan, req.Tasks, body.Revise)
-	placed, unplaced := scheduler.Place(tasks, scheduler.Options{From: body.FromSlot, To: body.ToSlot, Occupied: occupiedBy(blocks)})
+	// A revision may ask for another break between blocks; the whole plan is spaced again.
+	respace := revision != nil && plan.BreakMinutes >= 0 && plan.BreakMinutes != breakMinutes && asksForBreak(revision.Request)
+	if respace {
+		breakMinutes = min(plan.BreakMinutes, maxBreakMinutes)
+	}
+	tasks, estimates, missing := toSchedulerTasks(plan, req.Tasks, body.Revise, respace)
+	placed, unplaced := scheduler.Place(tasks, scheduler.Options{
+		From: body.FromSlot, To: body.ToSlot, Occupied: occupiedBy(blocks), Gap: breakBoxes(breakMinutes),
+	})
 
-	resp := suggestResponse{Blocks: []suggestedBlock{}, Unplaced: missing, Estimates: estimates, Notes: plan.Notes}
+	resp := suggestResponse{Blocks: []suggestedBlock{}, Unplaced: missing, Estimates: estimates, Notes: plan.Notes, BreakMinutes: breakMinutes}
 	for _, p := range placed {
 		resp.Blocks = append(resp.Blocks, suggestedBlock{
 			TaskID: p.TaskID, Title: p.Title, StartSlot: p.Range.Start, EndSlot: p.Range.End, Reason: p.Reason, Shifted: p.Shifted,
@@ -254,6 +279,35 @@ func urgentBacklog(items []store.BacklogItem, day time.Time) []ai.TaskInput {
 	return tasks
 }
 
+const (
+	maxBreakMinutes = scheduler.MaxGap * 10
+	breakRule       = "쉬는 시간은 0~60분 사이로 10분 단위로 정해 주세요"
+)
+
+func validBreak(minutes int) bool {
+	return minutes >= 0 && minutes <= maxBreakMinutes && minutes%10 == 0
+}
+
+// breakBoxes rounds a break up to whole 10-minute boxes.
+func breakBoxes(minutes int) int {
+	return (max(minutes, 0) + 9) / 10
+}
+
+// breakWords are how people ask about breaks between blocks. A small model
+// sometimes fills breakMinutes for requests about something else, so a new
+// break is only taken when the request talks about one.
+var breakWords = []string{"쉬", "휴식", "간격", "틈", "여유", "텀", "붙여", "break", "rest", "gap"}
+
+func asksForBreak(request string) bool {
+	request = strings.ToLower(request)
+	for _, w := range breakWords {
+		if strings.Contains(request, w) {
+			return true
+		}
+	}
+	return false
+}
+
 // toRevision checks a revise request and turns it into what the AI is shown.
 func toRevision(rv *reviseRequest) (*ai.Revision, string) {
 	if rv == nil {
@@ -296,7 +350,9 @@ func clockSlot(s string) (int, bool) {
 // are dropped, sizes are clamped, and tasks the model skipped are reported back.
 // When revising, tasks the model kept stay exactly as they were shown, tasks it
 // was asked to leave out are dropped, and asked-for start times are honoured.
-func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput, rv *reviseRequest) ([]scheduler.Task, []taskEstimate, []unplacedTask) {
+// With respace (a new break between blocks), kept tasks keep their order and
+// part of the day but are spaced again instead of staying exactly where they were.
+func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput, rv *reviseRequest, respace bool) ([]scheduler.Task, []taskEstimate, []unplacedTask) {
 	shown := map[string][]scheduler.Chunk{}
 	pins := map[string][]scheduler.Range{}
 	if rv != nil {
@@ -329,7 +385,12 @@ func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput, rv *reviseRequest) ([
 			if len(shown[in.ID]) == 0 {
 				continue
 			}
-			tasks = append(tasks, scheduler.Task{ID: in.ID, Priority: tp.Priority, Chunks: shown[in.ID], Pinned: pins[in.ID], Reason: tp.Reason})
+			kept := scheduler.Task{ID: in.ID, Priority: tp.Priority, Chunks: shown[in.ID], Pinned: pins[in.ID], Reason: tp.Reason}
+			if respace {
+				start := pins[in.ID][0].Start
+				kept.Pinned, kept.Prefer = nil, &start
+			}
+			tasks = append(tasks, kept)
 			if in.EstimateBoxes == nil {
 				boxes := 0
 				for _, c := range shown[in.ID] {
@@ -489,4 +550,32 @@ type applyResponse struct {
 	Blocks  []store.Block `json:"blocks"`
 	Moved   int           `json:"moved"`   // put at another time, as the day had changed
 	Skipped int           `json:"skipped"` // no free time left for them
+}
+
+// planBreak is the break AI plans keep between blocks, chosen in the AI panel.
+func (a *API) planBreak(w http.ResponseWriter, r *http.Request) {
+	minutes, err := a.store.PlanBreak(r.Context(), userID(r))
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"breakMinutes": minutes})
+}
+
+func (a *API) setPlanBreak(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		BreakMinutes int `json:"breakMinutes"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if !validBreak(body.BreakMinutes) {
+		writeError(w, http.StatusBadRequest, breakRule)
+		return
+	}
+	if err := a.store.SetPlanBreak(r.Context(), userID(r), body.BreakMinutes); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"breakMinutes": body.BreakMinutes})
 }

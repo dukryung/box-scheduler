@@ -124,6 +124,8 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 			r.Post("/days/{date}/carry-over", a.carryOver)
 			r.Post("/days/{date}/ai-suggest", a.aiSuggest)
 			r.Post("/days/{date}/ai-apply", a.aiApply)
+			r.Get("/ai/plan-break", a.planBreak)
+			r.Put("/ai/plan-break", a.setPlanBreak)
 			r.Post("/assistant/preview", a.assistantPreview)
 			r.Post("/assistant/apply", a.assistantApply)
 			r.Post("/assistant/tidy", a.assistantTidy)

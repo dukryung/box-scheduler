@@ -16,7 +16,7 @@ You get the tasks from their brain dump, the blocks already on their calendar, a
 - startAt: when the task should start, "HH:MM" (24-hour), inside the available boxes. Work it out in this order:
   1. Routines first: a short daily habit such as QT (Quiet Time, a morning devotion), prayer, Bible reading, meditation, a morning workout or a daily review goes at the very start of the available time, before any other work, whatever its priority. Such routines usually take 20 to 30 minutes unless the person said otherwise.
   2. Then the remaining tasks one after another in priority order: deep, focused work in the morning, meetings, calls and admin in the afternoon, light or personal things (errands, chores, social plans) in the evening.
-  3. Each task starts after the previous one ends (its whole estimate, all chunks), skipping over existingBlocks.
+  3. Each task starts after the previous one ends (its whole estimate, all chunks), plus breakMinutes, skipping over existingBlocks.
   If recentCompleted shows when they usually do similar work, start it around that time. A scheduler then fits the plan exactly, moving anything that collides to the nearest free time.
 - reason: one short sentence, in the same language as the task titles, explaining the estimate and the timing.
 
@@ -24,7 +24,9 @@ Some tasks have a dueDate (deadline). Tasks marked backlog come from the person'
 
 Use recentCompleted to calibrate estimates for similar work. Put any advice about the day as a whole (overload, missing breaks, tasks that will not fit) in notes, in the same language as the task titles, in two sentences at most. Include every task exactly once, using its id as taskId. In reason and notes, talk in hours and minutes, never in boxes or slots.
 
-Leave endAt "", skip false and keep false, unless the prompt asks you to revise an earlier suggestion.`
+breakMinutes is the break the person keeps between blocks; the scheduler leaves it free, so do not count it as missing breaks.
+
+Leave endAt "", skip false and keep false, and set the top-level breakMinutes to -1, unless the prompt asks you to revise an earlier suggestion.`
 
 const revisionPrompt = `This time you are revising: revision.previousSuggestion is the plan the person was shown (blocks with start and end times), revision.earlierRequests are changes they asked for before, already applied, and revision.request is what they ask now. Change only what revision.request asks for:
 - keep: true for every task the request does not touch, so it stays exactly where it was. Copy its estimate and chunks from before.
@@ -39,6 +41,7 @@ Any task the request names gets keep: false, and its new values must actually ca
 - "오후로 미뤄줘" → keep false, preferredWindow "afternoon", startAt "".
 - "9시로 옮겨줘" → keep false, startAt "09:00", and the same length and chunks as shown in previousSuggestion (a task shortened or split earlier stays that way).
 - "빼줘" → skip true.
+The top-level breakMinutes is -1, unless the request asks for a different break between blocks: then the minutes ("사이사이 10분씩 쉬게 해줘" → 10, "쉬는 시간 없이 붙여줘" → 0), with keep true for tasks the request does not otherwise touch; the scheduler spaces the whole plan again.
 Blocks marked uncheckedByUser were switched off by the person; keep those tasks unless asked otherwise. Still include every task exactly once. In notes, say in one short sentence what you changed, in the language of the request, and only what your answer really changes.`
 
 // planSchema constrains the model's output to Plan.
@@ -76,9 +79,10 @@ var planSchema = map[string]any{
 				"additionalProperties": false,
 			},
 		},
-		"notes": map[string]any{"type": "string"},
+		"notes":        map[string]any{"type": "string"},
+		"breakMinutes": map[string]any{"type": "integer"},
 	},
-	"required":             []string{"tasks", "notes"},
+	"required":             []string{"tasks", "notes", "breakMinutes"},
 	"additionalProperties": false,
 }
 

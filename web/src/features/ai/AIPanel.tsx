@@ -12,6 +12,8 @@ const STEP = 3 // 30-minute choices
 const DEFAULT_FROM = 54 // 09:00
 const DEFAULT_TO = 132 // 22:00
 
+const breakChoices = [0, 10, 20, 30]
+
 const options = Array.from({ length: SLOTS_PER_DAY / STEP + 1 }, (_, i) => i * STEP)
 
 /** Today plans from the next half hour; other days from 09:00. */
@@ -90,6 +92,22 @@ export function AIPanel({ ai, nowSlot, onClose, onApplied }: Props) {
         />
         보관함에서 마감이 가깝거나 중요한 일도 함께 넣기
       </label>
+      <label className="flex items-center gap-2 text-[13px] text-ink-2">
+        블록 사이 쉬는 시간
+        <select
+          aria-label="블록 사이 쉬는 시간"
+          value={ai.breakMinutes}
+          disabled={busy}
+          onChange={(e) => void ai.chooseBreak(Number(e.target.value))}
+          className="h-8 rounded-lg border border-line-strong bg-surface px-2 text-[13px] text-ink"
+        >
+          {breakChoices.map((m) => (
+            <option key={m} value={m}>
+              {m === 0 ? '없음' : `${m}분`}
+            </option>
+          ))}
+        </select>
+      </label>
       {!suggestion && status !== 'loading' && (
         <p className="text-[13px] leading-relaxed text-muted">
           Brain Dump에 남은 일을 AI가 쪼개고 빈 시간에 배치해요. 제안을 받은 뒤 고칠 점을 적어 다시 짜게 할 수 있고, 적용하기 전까지는 시간표에 저장되지 않아요.
@@ -114,6 +132,7 @@ export function AIPanel({ ai, nowSlot, onClose, onApplied }: Props) {
       {suggestion && (
         <>
           {suggestion.notes && <p className="rounded-xl bg-ai-soft px-3.5 py-3 text-[13px] leading-relaxed text-ai-ink">{suggestion.notes}</p>}
+          {suggestion.breakMinutes > 0 && <p className="text-xs text-muted">블록 사이에 {suggestion.breakMinutes}분씩 쉬는 시간을 뒀어요</p>}
           <ul className="-mx-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1" aria-label="제안된 블록">
             {suggestion.blocks.length === 0 && <li className="text-sm text-muted">빈 시간에 넣을 수 있는 일이 없어요.</li>}
             {suggestion.blocks.map((b, i) => {

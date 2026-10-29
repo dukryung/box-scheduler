@@ -46,6 +46,8 @@ type PlanRequest struct {
 	Tasks   []TaskInput   `json:"tasks"`
 	Blocks  []BlockInput  `json:"existingBlocks"`
 	History []HistoryItem `json:"recentCompleted"`
+	// BreakMinutes is the break the person wants between blocks; the scheduler keeps it.
+	BreakMinutes int `json:"breakMinutes"`
 	// Revision is set when the person asks for changes to a plan they were shown.
 	Revision *Revision `json:"revision,omitempty"`
 }
@@ -90,6 +92,8 @@ type TaskPlan struct {
 type Plan struct {
 	Tasks []TaskPlan `json:"tasks"`
 	Notes string     `json:"notes"`
+	// BreakMinutes is a new break between blocks asked for in a revision, or -1.
+	BreakMinutes int `json:"breakMinutes"`
 }
 
 type Planner interface {
