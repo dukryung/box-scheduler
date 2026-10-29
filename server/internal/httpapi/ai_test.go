@@ -118,6 +118,27 @@ func TestToSchedulerTasksRespacesKeptTasks(t *testing.T) {
 	if k := tasks[0]; k.Pinned != nil || k.Prefer == nil || *k.Prefer != 60 || k.Chunks[0].Boxes != 6 {
 		t.Fatalf("kept = %+v", k)
 	}
+	// Real qwen3: every task restated with its current start and a new length.
+	inputs = append(inputs, ai.TaskInput{ID: "b", Title: "운동"})
+	rv.Request = "사이사이 10분씩 쉬고 운동은 30분만"
+	rv.Previous = append(rv.Previous, shownBlock{TaskID: "b", Title: "운동", StartSlot: 70, EndSlot: 76})
+	plan.Tasks = []ai.TaskPlan{
+		{TaskID: "a", EstimateBoxes: 4, Chunks: []ai.Chunk{{Title: "기획서", Boxes: 4}}, StartAt: "10:00"},
+		{TaskID: "b", EstimateBoxes: 3, Chunks: []ai.Chunk{{Title: "운동", Boxes: 3}}, StartAt: "11:40"},
+	}
+	tasks, _, _ = toSchedulerTasks(plan, inputs, rv, true)
+	if a := tasks[0]; a.StartAt != nil || *a.Prefer != 60 || a.Chunks[0].Boxes != 6 {
+		t.Fatalf("not named, kept = %+v", a)
+	}
+	if b := tasks[1]; b.StartAt == nil || b.Chunks[0].Boxes != 3 {
+		t.Fatalf("named, changed = %+v", b)
+	}
+}
+
+func TestMentions(t *testing.T) {
+	if !mentions("box는 1시간만", "box scheduler 고도화") || mentions("사이사이 쉬게", "QT 하기") || mentions("a 빼줘", "a b") {
+		t.Fatal("mentions")
+	}
 }
 
 func TestBreakRules(t *testing.T) {

@@ -380,8 +380,11 @@ func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput, rv *reviseRequest, re
 			continue
 		}
 		// Kept as it was: where it was shown, or still left out (taken out by an
-		// earlier request, or it did not fit) when it was not on screen.
-		if rv != nil && tp.Keep {
+		// earlier request, or it did not fit) when it was not on screen. When only
+		// the break changes, a small model tends to restate every task (its current
+		// start as an asked-for time, a new length), so tasks the request does not
+		// name are kept as they were.
+		if rv != nil && (tp.Keep || respace && !mentions(rv.Request, in.Title)) {
 			if len(shown[in.ID]) == 0 {
 				continue
 			}
@@ -456,6 +459,18 @@ func chunkTitle(task, chunk string, chunks int) string {
 		return task
 	}
 	return task + " · " + chunk
+}
+
+// mentions reports whether request names the task: a word of its title (two or
+// more letters) appears in it, e.g. "box는 1시간만" names "box scheduler 고도화".
+func mentions(request, title string) bool {
+	request = strings.ToLower(request)
+	for _, w := range strings.Fields(strings.ToLower(title)) {
+		if utf8.RuneCountInString(w) >= 2 && strings.Contains(request, w) {
+			return true
+		}
+	}
+	return false
 }
 
 func chunkBoxes(chunks []scheduler.Chunk) int {
