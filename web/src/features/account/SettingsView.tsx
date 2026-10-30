@@ -2,7 +2,6 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { authApi } from '../../api/client'
 import { card, primaryButton, secondaryButton } from '../../components/styles'
-import { ThemeToggle } from '../../components/ThemeToggle'
 import { todayISO } from '../../lib/date'
 import { useAuth } from '../../store/authStore'
 import { useGoogleEnabled } from '../auth/google'
@@ -158,10 +157,6 @@ export function SettingsView() {
 
         <Section title="AI 연결">
           <AIConnections />
-        </Section>
-
-        <Section title="화면 모드" aside={<ThemeToggle />}>
-          <p className="text-sm text-muted">버튼을 누를 때마다 시스템 설정 → 라이트 → 다크 순으로 바뀌어요.</p>
         </Section>
 
         <Section title="로그인 방법">
