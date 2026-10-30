@@ -209,6 +209,11 @@ try {
   await p.getByRole('region', { name: '새 알림' }).getByRole('status').first().waitFor()
   check((await chimes()).length === 0, 'sound off: the toast shows without a chime')
   await sec.getByLabel(/알림 소리/).check()
+  await sec.getByLabel('소리 종류').selectOption('bell')
+  await p.waitForTimeout(100)
+  check((await p.evaluate(() => localStorage.getItem('bs.notify.tone'))) === 'bell' && (await chimes()).length > 0, 'settings: picking a tone plays it and is remembered')
+  await p.reload()
+  check((await p.getByRole('region', { name: '알림' }).getByLabel('소리 종류').inputValue()) === 'bell', 'settings: the tone is kept after a reload')
   const sw = await fetch(`${BASE}/sw.js`)
   check(sw.ok && sw.headers.get('cache-control') === 'no-cache' && (await sw.text()).includes("addEventListener('push'"), 'service worker served fresh at /sw.js')
 

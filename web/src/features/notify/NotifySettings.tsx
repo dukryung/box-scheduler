@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { notifyApi } from '../../api/client'
 import type { NotifySettings as Settings } from '../../api/types'
 import { secondaryButton, primaryButton } from '../../components/styles'
-import { chime, setSoundOn, soundOn } from '../../lib/chime'
+import { TONES, chime, savedTone, setSavedTone, setSoundOn, soundOn, type Tone } from '../../lib/chime'
 import { browserTimezone, disablePush, enablePush, pushState, type PushState } from '../../lib/push'
 import { useNotifications } from '../../store/notificationsStore'
 
@@ -16,6 +16,7 @@ export function NotifySettings() {
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<{ text: string; tone: 'good' | 'danger' } | null>(null)
   const [sound, setSound] = useState(soundOn)
+  const [tone, setTone] = useState(savedTone)
 
   useEffect(() => {
     void pushState().then(setState)
@@ -114,9 +115,27 @@ export function NotifySettings() {
           />
           <span className="flex flex-col gap-0.5">
             <span className="font-medium">알림 소리</span>
-            <span className="text-xs text-muted">앱 화면에 알림이 뜰 때 짧게 ‘띵-동’ 울려요. 이 브라우저에만 적용돼요.</span>
+            <span className="text-xs text-muted">앱 화면에 알림이 뜰 때 2초쯤 울려요. 이 브라우저에만 적용돼요.</span>
           </span>
         </label>
+        <select
+          aria-label="소리 종류"
+          value={tone}
+          disabled={!sound}
+          onChange={(e) => {
+            const t = e.target.value as Tone
+            setTone(t)
+            setSavedTone(t)
+            chime('reminder', { force: true, tone: t })
+          }}
+          className="h-9 rounded-lg border border-line-strong bg-surface px-2 text-xs text-ink"
+        >
+          {TONES.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
+            </option>
+          ))}
+        </select>
         <button className={`${secondaryButton} h-9 text-xs`} onClick={() => chime('reminder', { force: true })}>
           소리 들어보기
         </button>
