@@ -257,3 +257,71 @@ func TestCleanSubsMergesPiecesWithTheSameTitle(t *testing.T) {
 		t.Errorf("got %v, want 자료 작성 once with 5 boxes", got)
 	}
 }
+
+func TestAsksToSkip(t *testing.T) {
+	titles := []string{"운동", "독서", "메일 답장"}
+	cases := []struct {
+		request, title string
+		want           bool
+	}{
+		{"운동은 빼고 독서는 밤 10시로 해줘", "운동", true},
+		{"운동은 빼고 독서는 밤 10시로 해줘", "독서", false},
+		{"독서는 밤 10시로, 메일은 빼줘", "메일 답장", true},
+		{"독서는 밤 10시로, 메일은 빼줘", "독서", false},
+		{"운동은 저녁 8시로 옮겨줘", "운동", false},
+		{"오늘 운동 취소됐어", "운동", true},
+	}
+	shared := []string{"E2E 기획서", "E2E 운동", "E2E 메일"}
+	if asksToSkip("E2E 운동 20시로, E2E 메일 빼줘", "E2E 기획서", shared) {
+		t.Error("a word every title shares named 기획서")
+	}
+	if !asksToSkip("E2E 운동 20시로, E2E 메일 빼줘", "E2E 메일", shared) {
+		t.Error("E2E 메일 was asked out")
+	}
+	if asksToSkip("E2E 운동 20시로, E2E 메일 빼줘", "E2E 운동", shared) {
+		t.Error("E2E 운동 was only moved")
+	}
+	for _, c := range cases {
+		if got := asksToSkip(c.request, c.title, titles); got != c.want {
+			t.Errorf("asksToSkip(%q, %q) = %v, want %v", c.request, c.title, got, c.want)
+		}
+	}
+}
+
+func TestToSchedulerTasksKeepsTheLengthOfAMovedTask(t *testing.T) {
+	inputs := []ai.TaskInput{{ID: "gym", Title: "운동"}, {ID: "read", Title: "독서"}}
+	rv := &reviseRequest{Request: "운동은 저녁 8시로 옮겨줘", Previous: []shownBlock{
+		{TaskID: "gym", Title: "운동", StartSlot: 114, EndSlot: 120},
+		{TaskID: "read", Title: "독서", StartSlot: 126, EndSlot: 129},
+	}}
+	plan := ai.Plan{Tasks: []ai.TaskPlan{
+		{TaskID: "gym", EstimateBoxes: 3, StartAt: "20:00", Chunks: []ai.Chunk{{Title: "운동", Boxes: 3}}},
+		{TaskID: "read", Keep: true},
+	}}
+	tasks, _, _ := toSchedulerTasks(plan, inputs, rv, false)
+	if got := chunkBoxes(tasks[0].Chunks); got != 6 || *tasks[0].StartAt != 120 {
+		t.Errorf("moved 운동: %d boxes at %d, want 6 at 120", got, *tasks[0].StartAt)
+	}
+
+	rv.Request = "운동은 저녁 8시부터 30분만"
+	tasks, _, _ = toSchedulerTasks(plan, inputs, rv, false)
+	if got := chunkBoxes(tasks[0].Chunks); got != 3 {
+		t.Errorf("asked for 30 minutes: %d boxes, want 3", got)
+	}
+}
+
+func TestToSchedulerTasksSkipsWhatTheRequestTakesOut(t *testing.T) {
+	inputs := []ai.TaskInput{{ID: "gym", Title: "운동"}, {ID: "read", Title: "독서"}}
+	rv := &reviseRequest{Request: "운동은 빼고 독서는 밤 10시로 해줘", Previous: []shownBlock{
+		{TaskID: "gym", Title: "운동", StartSlot: 114, EndSlot: 120},
+		{TaskID: "read", Title: "독서", StartSlot: 126, EndSlot: 129},
+	}}
+	plan := ai.Plan{Tasks: []ai.TaskPlan{
+		{TaskID: "read", EstimateBoxes: 3, StartAt: "22:00", Chunks: []ai.Chunk{{Title: "독서", Boxes: 3}}},
+		{TaskID: "gym", Keep: true},
+	}}
+	tasks, _, _ := toSchedulerTasks(plan, inputs, rv, false)
+	if len(tasks) != 1 || tasks[0].ID != "read" {
+		t.Errorf("got %v, want only 독서", tasks)
+	}
+}

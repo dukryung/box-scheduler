@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -368,6 +369,11 @@ func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput, rv *reviseRequest, re
 		byID[t.ID] = t
 	}
 
+	titles := make([]string, len(inputs))
+	for i, t := range inputs {
+		titles[i] = t.Title
+	}
+
 	tasks := []scheduler.Task{}
 	estimates := []taskEstimate{}
 	seen := map[string]bool{}
@@ -377,7 +383,9 @@ func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput, rv *reviseRequest, re
 			continue
 		}
 		seen[tp.TaskID] = true
-		if rv != nil && tp.Skip {
+		// A task the model gave a new time is not one the request takes out
+		// ("회의 취소된 자리로 옮겨줘").
+		if rv != nil && (tp.Skip || tp.StartAt == "" && asksToSkip(rv.Request, in.Title, titles)) {
 			continue
 		}
 		// Kept as it was: where it was shown, or still left out (taken out by an
@@ -442,6 +450,10 @@ func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput, rv *reviseRequest, re
 			if end, ok := clockSlot(tp.EndAt); ok && end > at && end-at != chunkBoxes(chunks) {
 				estimate = end - at
 				t.Chunks = []scheduler.Chunk{{Title: in.Title, Boxes: estimate}}
+			} else if len(shown[in.ID]) > 0 && !asksForLength(rv.Request) {
+				// Only moved: it keeps the length it was shown with, which a small
+				// model tends to forget ("8시로 옮겨줘" coming back 30 minutes long).
+				t.Chunks = shown[in.ID]
 			}
 		}
 		tasks = append(tasks, t)
@@ -492,6 +504,60 @@ func chunkTitle(task, chunk string, chunks int) string {
 		return task
 	}
 	return task + " · " + chunk
+}
+
+// skipWords are how people take a task out of a plan; lengthWords how they
+// change how long one takes.
+var (
+	skipWords   = []string{"빼", "취소", "지워", "제외", "없애"}
+	lengthWords = []string{"분", "시간", "길게", "짧게", "늘려", "줄여"}
+)
+
+// asksToSkip reports whether the part of request about title, from where it is
+// named up to where another task is named, asks to leave it out: "운동은 빼고
+// 독서는 10시로" takes out 운동, not 독서. A small model misses the first of
+// two changes asked at once.
+func asksToSkip(request, title string, titles []string) bool {
+	at := nameAt(request, title, titles)
+	if at < 0 {
+		return false
+	}
+	end := len(request)
+	for _, other := range titles {
+		if i := nameAt(request, other, titles); other != title && i > at && i < end {
+			end = i
+		}
+	}
+	part := request[at:end]
+	return slices.ContainsFunc(skipWords, func(w string) bool { return strings.Contains(part, w) })
+}
+
+func asksForLength(request string) bool {
+	return slices.ContainsFunc(lengthWords, func(w string) bool { return strings.Contains(request, w) })
+}
+
+// nameAt is where request first names the task: its whole title, or else a
+// word of it (two or more letters) that no other task's title has, since
+// "E2E 운동" and "E2E 메일" are not told apart by "E2E". -1 when not named.
+func nameAt(request, title string, titles []string) int {
+	request, title = strings.ToLower(request), strings.ToLower(title)
+	if i := strings.Index(request, title); i >= 0 {
+		return i
+	}
+	at := -1
+	for _, w := range strings.Fields(title) {
+		shared := slices.ContainsFunc(titles, func(o string) bool {
+			o = strings.ToLower(o)
+			return o != title && slices.Contains(strings.Fields(o), w)
+		})
+		if utf8.RuneCountInString(w) < 2 || shared {
+			continue
+		}
+		if i := strings.Index(request, w); i >= 0 && (at < 0 || i < at) {
+			at = i
+		}
+	}
+	return at
 }
 
 // mentions reports whether request names the task: a word of its title (two or
