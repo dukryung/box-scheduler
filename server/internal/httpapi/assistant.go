@@ -121,9 +121,19 @@ func (a *API) assistantPreview(w http.ResponseWriter, r *http.Request) {
 
 	res := assistant.Build(reply.Ops, refs, snap, body.ViewDate)
 	writeJSON(w, http.StatusOK, assistantPreviewResponse{
-		Reply: reply.Reply, Clarification: reply.Clarification,
+		Reply: reply.Reply, Clarification: clarification(reply.Clarification, res.Ops),
 		Ops: res.Ops, Changes: res.Changes, Warnings: res.Warnings,
 	})
+}
+
+// clarification drops a question asked alongside usable ops: the preview is
+// already the confirmation, and some models ask "이렇게 할까요?" out of habit.
+// Some models also send a lone space for "no question".
+func clarification(question string, ops []assistant.Op) string {
+	if len(ops) > 0 {
+		return ""
+	}
+	return strings.TrimSpace(question)
 }
 
 // assistantTidy rewrites a dictated transcript into a short request. Nothing is

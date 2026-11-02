@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"box-scheduler/server/internal/ai"
+	"box-scheduler/server/internal/assistant"
 	"box-scheduler/server/internal/scheduler"
 	"box-scheduler/server/internal/store"
 )
@@ -207,5 +208,18 @@ func TestChunkTitleDropsRepeatedTask(t *testing.T) {
 	}
 	if got := chunkTitle("기획서", "초안 작성", 1); got != "기획서" {
 		t.Errorf("single chunk: %q", got)
+	}
+}
+
+func TestClarificationGivesWayToOps(t *testing.T) {
+	ops := []assistant.Op{{Kind: "delete_block"}}
+	if got := clarification("이렇게 할까요?", ops); got != "" {
+		t.Errorf("with ops: got %q, want no question", got)
+	}
+	if got := clarification("어느 회의인가요?", nil); got != "어느 회의인가요?" {
+		t.Errorf("without ops: got %q, want the question", got)
+	}
+	if got := clarification(" ", nil); got != "" {
+		t.Errorf("blank question: got %q, want none", got)
 	}
 }

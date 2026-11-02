@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -42,5 +43,24 @@ func TestOpenAICallerStripsThinkingAndFallsBack(t *testing.T) {
 	// First try: thinking off with a JSON schema; the retry drops both.
 	if calls != 2 || prompts[0] != "none" || prompts[1] != "-" {
 		t.Errorf("calls=%d prompts=%q", calls, prompts)
+	}
+}
+
+func TestAssistantSchemaListsOpsFirst(t *testing.T) {
+	b, err := json.Marshal(assistantSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	ops, reply, question := strings.Index(s, `"ops":`), strings.Index(s, `"reply":`), strings.Index(s, `"clarification":`)
+	if ops < 0 || !(ops < reply && reply < question) {
+		t.Fatalf("want ops, reply, clarification in that order: %s", s)
+	}
+	if start, end := strings.Index(s, `"start":`), strings.Index(s, `"end":`); start < 0 || start > end {
+		t.Fatalf("want an op's start before its end: %s", s)
+	}
+	var back map[string]any
+	if err := json.Unmarshal(b, &back); err != nil {
+		t.Fatalf("schema is not valid JSON: %v", err)
 	}
 }
