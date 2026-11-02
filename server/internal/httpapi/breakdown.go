@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -163,6 +164,11 @@ func cleanSubs(task string, in []breakdown.Sub) []breakdown.Sub {
 		}
 		if utf8.RuneCountInString(title) > 80 {
 			title = string([]rune(title)[:80])
+		}
+		// A small model sometimes names two pieces the same; they become one.
+		if i := slices.IndexFunc(out, func(o breakdown.Sub) bool { return o.Title == title }); i >= 0 {
+			out[i].Boxes = min(out[i].Boxes+s.Boxes, store.SlotsPerDay*5)
+			continue
 		}
 		out = append(out, breakdown.Sub{Title: title, Boxes: min(s.Boxes, store.SlotsPerDay*5)})
 		if len(out) == maxSubtasks {

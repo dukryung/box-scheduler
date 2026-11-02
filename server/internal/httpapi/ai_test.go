@@ -7,6 +7,7 @@ import (
 
 	"box-scheduler/server/internal/ai"
 	"box-scheduler/server/internal/assistant"
+	"box-scheduler/server/internal/breakdown"
 	"box-scheduler/server/internal/scheduler"
 	"box-scheduler/server/internal/store"
 )
@@ -221,5 +222,38 @@ func TestClarificationGivesWayToOps(t *testing.T) {
 	}
 	if got := clarification(" ", nil); got != "" {
 		t.Errorf("blank question: got %q, want none", got)
+	}
+}
+
+func TestToSchedulerTasksTrustsTheWindowOverATimeOutsideIt(t *testing.T) {
+	inputs := []ai.TaskInput{{ID: "shop", Title: "장보기"}, {ID: "doc", Title: "기획서"}}
+	plan := ai.Plan{Tasks: []ai.TaskPlan{
+		{TaskID: "shop", EstimateBoxes: 6, Priority: 4, Window: "evening", StartAt: "12:50", Chunks: []ai.Chunk{{Title: "장보기", Boxes: 6}}},
+		{TaskID: "doc", EstimateBoxes: 6, Priority: 1, Window: "morning", StartAt: "10:00", Chunks: []ai.Chunk{{Title: "기획서", Boxes: 6}}},
+	}}
+	tasks, _, _ := toSchedulerTasks(plan, inputs, nil, false)
+	if got := *tasks[0].Prefer; got != 108 {
+		t.Errorf("evening errand at 12:50: prefer %d, want 108 (18:00)", got)
+	}
+	if got := *tasks[1].Prefer; got != 60 {
+		t.Errorf("morning work at 10:00: prefer %d, want it kept at 60", got)
+	}
+}
+
+func TestToSchedulerTasksPlansOnlyWhatIsLeft(t *testing.T) {
+	twelve := 12
+	inputs := []ai.TaskInput{{ID: "dev", Title: "로그인 기능", EstimateBoxes: &twelve, ScheduledBoxes: 6}}
+	plan := ai.Plan{Tasks: []ai.TaskPlan{{TaskID: "dev", EstimateBoxes: 12, Priority: 1, Window: "morning",
+		Chunks: []ai.Chunk{{Title: "설계", Boxes: 6}, {Title: "구현", Boxes: 6}}}}}
+	tasks, _, _ := toSchedulerTasks(plan, inputs, nil, false)
+	if got := chunkBoxes(tasks[0].Chunks); got != 6 || len(tasks[0].Chunks) != 2 {
+		t.Errorf("got %v, want the 6 boxes left in two chunks", tasks[0].Chunks)
+	}
+}
+
+func TestCleanSubsMergesPiecesWithTheSameTitle(t *testing.T) {
+	got := cleanSubs("발표", []breakdown.Sub{{Title: "자료 작성", Boxes: 2}, {Title: "리허설", Boxes: 1}, {Title: "자료 작성", Boxes: 3}})
+	if len(got) != 2 || got[0] != (breakdown.Sub{Title: "자료 작성", Boxes: 5}) {
+		t.Errorf("got %v, want 자료 작성 once with 5 boxes", got)
 	}
 }

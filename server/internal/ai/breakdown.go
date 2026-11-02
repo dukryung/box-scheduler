@@ -38,7 +38,9 @@ Split the task into 3 to 8 concrete pieces of work, in the order they should be 
 - Each piece: a short title in Korean naming the actual work (e.g. "로그인 API 문서 작성", not "1단계"), do not repeat the task title in it, an estimate in boxes (at least 1), and a one-sentence reason in Korean.
 - If a total estimate is given, the pieces should add up to about that total. If none is given, estimate realistically for one person.
 - Keep the plan inside the period: working days × the daily maximum is the most that fits.
-- Include a short final piece for review or wrap-up when the task produces something others will use.
+- Every piece has a different title; do not split one step into two pieces with the same name.
+- End with a short piece for review or wrap-up (검토, 마무리, 공유) when the task produces something others will use.
+Example for "팀 워크숍 준비" (total 18 boxes): 장소·일정 확정 3, 프로그램 짜기 6, 자료 만들기 6, 참석자 안내 공유 3.
 - notes: one or two sentences in Korean about the plan (what to do first, risks).
 Write only what is asked; no markdown.`
 

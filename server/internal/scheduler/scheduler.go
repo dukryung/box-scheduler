@@ -35,6 +35,16 @@ var windowRanges = map[Window]Range{
 	Any:       {0, SlotsPerDay},
 }
 
+// Part is the slots of a morning, afternoon or evening window; false for any
+// other window.
+func (w Window) Part() (Range, bool) {
+	if w == Any {
+		return Range{}, false
+	}
+	r, ok := windowRanges[w]
+	return r, ok
+}
+
 // MaxGap is the longest break between blocks: an hour.
 const MaxGap = 6
 

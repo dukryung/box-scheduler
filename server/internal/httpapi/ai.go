@@ -12,6 +12,7 @@ import (
 
 	"box-scheduler/server/internal/ai"
 	"box-scheduler/server/internal/aigate"
+	"box-scheduler/server/internal/breakdown"
 	"box-scheduler/server/internal/scheduler"
 	"box-scheduler/server/internal/store"
 )
@@ -416,10 +417,24 @@ func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput, rv *reviseRequest, re
 			chunks = []scheduler.Chunk{{Title: in.Title, Boxes: estimate}}
 		}
 
+		// Only what is left of a task the person sized: a small model tends to plan
+		// the whole estimate again when part of it is already on the calendar.
+		if rv == nil && in.EstimateBoxes != nil && in.ScheduledBoxes > 0 {
+			if left := *in.EstimateBoxes - in.ScheduledBoxes; left > 0 && chunkBoxes(chunks) > left {
+				chunks = scaleChunks(chunks, left)
+			}
+		}
+
 		t := scheduler.Task{ID: in.ID, Priority: tp.Priority, Window: scheduler.Window(tp.Window), Chunks: chunks, Reason: tp.Reason}
 		at, timed := clockSlot(tp.StartAt)
 		if timed && rv == nil {
-			t.Prefer = &at // the AI's own choice: a starting point, not a promise
+			// The AI's own choice: a starting point, not a promise. A small model
+			// may name the evening for an errand and then start it at 12:50; the
+			// part of the day it named wins over a time outside it.
+			if part, ok := t.Window.Part(); ok && (at < part.Start || at >= part.End) {
+				at = part.Start
+			}
+			t.Prefer = &at
 		}
 		if timed && rv != nil {
 			t.StartAt = &at
@@ -446,6 +461,24 @@ func toSchedulerTasks(plan ai.Plan, inputs []ai.TaskInput, rv *reviseRequest, re
 		}
 	}
 	return tasks, estimates, missing
+}
+
+// scaleChunks shrinks or stretches the chunks to add up to total, keeping their
+// order and proportions.
+func scaleChunks(chunks []scheduler.Chunk, total int) []scheduler.Chunk {
+	subs := make([]breakdown.Sub, len(chunks))
+	for i, c := range chunks {
+		subs[i] = breakdown.Sub{Title: c.Title, Boxes: c.Boxes}
+	}
+	if total < len(subs) { // too short to keep every piece: one block
+		return []scheduler.Chunk{{Title: chunks[0].Title, Boxes: total}}
+	}
+	scaled, _ := breakdown.ScaleTo(subs, total)
+	out := make([]scheduler.Chunk, len(scaled))
+	for i, s := range scaled {
+		out[i] = scheduler.Chunk{Title: s.Title, Boxes: s.Boxes}
+	}
+	return out
 }
 
 // chunkTitle keeps the task name on each piece of a split task ("기획서 · 초안 작성").
