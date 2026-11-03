@@ -54,6 +54,10 @@ func run() error {
 	slog.Info("ai planner", "provider", provider)
 
 	st := store.New(pool)
+	// Meeting write-ups run in the background; any marked running were cut off by the restart.
+	if err := st.ResetMeetingAI(ctx, "서버가 다시 시작돼 회의록 정리가 멈췄어요. 다시 해 주세요"); err != nil {
+		slog.Warn("reset meeting write-ups", "err", err)
+	}
 	publicURL := strings.TrimRight(envOr("PUBLIC_URL", "http://localhost:3080"), "/")
 	opts := httpapi.Options{
 		CookieSecure: os.Getenv("COOKIE_SECURE") == "true",
@@ -71,6 +75,17 @@ func run() error {
 		return err
 	}
 	opts.NetPolicy = netguard.Parse(os.Getenv("AI_ALLOW_PRIVATE"))
+	opts.AudioDir = os.Getenv("MEETING_AUDIO_DIR")
+	if opts.AudioDir != "" {
+		if err := os.MkdirAll(opts.AudioDir, 0o750); err != nil {
+			slog.Warn("meeting recordings off", "dir", opts.AudioDir, "err", err)
+			opts.AudioDir = ""
+		} else if live, err := st.MeetingIDs(ctx); err == nil {
+			if n, err := httpapi.SweepMeetingAudio(opts.AudioDir, live); err != nil || n > 0 {
+				slog.Info("swept meeting recordings", "removed", n, "err", err)
+			}
+		}
+	}
 	opts.PublicURL = publicURL
 	opts.Mail = &mail.SMTP{
 		Host: os.Getenv("SMTP_HOST"), Port: envOr("SMTP_PORT", "587"),

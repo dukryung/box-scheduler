@@ -388,7 +388,7 @@ export interface InviteInfo {
 
 export interface AppNotification {
   id: string
-  kind: 'assigned' | 'split' | 'reminder' | 'test'
+  kind: 'assigned' | 'split' | 'subtasks' | 'reminder' | 'test' | 'meeting'
   title: string
   body: string
   /** In-app path to open, e.g. /day/2026-10-21. */
@@ -403,4 +403,77 @@ export interface NotifySettings {
   /** Assigned to a team task, or a share split by someone else. */
   team: boolean
   timezone: string
+}
+
+/** What the AI (then a person) writes from a meeting. */
+export interface Minutes {
+  summary: string
+  decisions: string[]
+  topics: { title: string; points: string[] }[]
+}
+
+export interface MeetingTask {
+  id?: string
+  title: string
+  note: string
+  /** The words of the meeting the task comes from ('' when none were found). */
+  evidence: string
+  dueDate: string | null
+  /** '' when no one has it yet. */
+  assigneeId: string
+  /** Once confirmed: the team task it became. */
+  teamTaskId?: string
+}
+
+/** draft: text only · processing: the AI is at work · ready: minutes and tasks to check · confirmed: tasks made. */
+export type MeetingStatus = 'draft' | 'processing' | 'ready' | 'confirmed'
+
+export interface Meeting {
+  id: string
+  title: string
+  heldOn: string
+  /** Only when one meeting is read. */
+  transcript?: string
+  minutes: Minutes | null
+  status: MeetingStatus
+  /** Why the last AI write-up failed ('' when it did not). */
+  aiError: string
+  /** How far the AI is, in parts of the meeting. */
+  aiDone: number
+  aiParts: number
+  createdBy: string
+  createdByName: string
+  confirmedByName: string
+  confirmedAt: string | null
+  createdAt: string
+  updatedAt: string
+  taskCount: number
+  tasks: MeetingTask[]
+  /** Recordings, oldest first (only when one meeting is read). */
+  audio: MeetingAudio[]
+  canEdit: boolean
+  canConfirm: boolean
+  canDelete: boolean
+}
+
+export interface MeetingInput {
+  title?: string
+  heldOn?: string
+  transcript?: string
+  minutes?: Minutes
+  tasks?: MeetingTask[]
+}
+
+/** A meeting recording, uploaded piece by piece while it was made. */
+export interface MeetingAudio {
+  id: string
+  mime: string
+  bytes: number
+  /** Pieces received so far; the next one sent is number `chunks`. */
+  chunks: number
+  durationSec: number
+  /** Recording stopped (else it is still going, or the tab closed mid-way). */
+  finished: boolean
+  createdByName: string
+  createdAt: string
 }

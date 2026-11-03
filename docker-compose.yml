@@ -66,6 +66,10 @@ services:
       REMINDER_EVERY: ${REMINDER_EVERY:-30s}
       LOGIN_LIMIT_PER_IP: ${LOGIN_LIMIT_PER_IP:-}
       SIGNUP_LIMIT_PER_IP: ${SIGNUP_LIMIT_PER_IP:-}
+      # Meeting recordings, uploaded piece by piece while a meeting is recorded.
+      MEETING_AUDIO_DIR: /data/meetings
+    volumes:
+      - meeting-audio:/data/meetings
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -111,3 +115,4 @@ services:
 
 volumes:
   pgdata:
+  meeting-audio:

@@ -8,6 +8,7 @@ import { todayISO } from '../../lib/date'
 import { useAuth } from '../../store/authStore'
 import { useTeams } from '../../store/teamsStore'
 import { BottomTabs, TopBar, ViewSwitch } from '../nav/ViewSwitch'
+import { TeamMeetings } from './TeamMeetings'
 import { TeamMonth } from './TeamMonth'
 import { TeamTasks } from './TeamTasks'
 
@@ -130,7 +131,7 @@ export function TeamView() {
   const { teamId = '' } = useParams()
   const [params, setParams] = useSearchParams()
   const asked = params.get('tab')
-  const tab = params.get('invite') || asked === 'members' ? 'members' : asked === 'month' ? 'month' : 'tasks'
+  const tab = params.get('invite') || asked === 'members' ? 'members' : asked === 'month' ? 'month' : asked === 'meetings' ? 'meetings' : 'tasks'
   const navigate = useNavigate()
   const me = useAuth((s) => s.user)
   const reloadTeams = useTeams((s) => s.load)
@@ -215,6 +216,7 @@ export function TeamView() {
             [
               ['tasks', '업무'],
               ['month', '월간 일정'],
+              ['meetings', '회의'],
               ['members', `멤버 ${team.memberList.length}`],
             ] as const
           ).map(([k, label]) => (
@@ -232,6 +234,7 @@ export function TeamView() {
 
         {tab === 'tasks' && <TeamTasks team={team} meId={me?.id ?? ''} />}
         {tab === 'month' && <TeamMonth team={team} meId={me?.id ?? ''} />}
+        {tab === 'meetings' && <TeamMeetings team={team} />}
 
         {tab === 'members' && canInvite && (
           <Section title="이메일로 초대하기">

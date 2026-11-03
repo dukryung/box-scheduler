@@ -46,6 +46,8 @@ type Options struct {
 	Notify *notify.Notifier
 	// SecretBox seals accounts' API keys (nil: keys cannot be saved).
 	SecretBox *secretbox.Box
+	// AudioDir keeps meeting recordings ("": recording is off).
+	AudioDir string
 	// NetPolicy decides which internal addresses local LLM connections may reach.
 	NetPolicy netguard.Policy
 	// Per-IP limits: log-in attempts per 15 minutes and sign-ups per hour (0 = default).
@@ -178,6 +180,18 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 			r.Post("/teams/{teamID}/tasks/{taskID}/plan", a.teamPlanSuggest)
 			r.Post("/teams/{teamID}/tasks/{taskID}/plan/preview", a.teamPlanPreview)
 			r.Post("/teams/{teamID}/tasks/{taskID}/plan/apply", a.teamPlanApply)
+			r.Get("/teams/{teamID}/meetings", a.listMeetings)
+			r.Post("/teams/{teamID}/meetings", a.createMeeting)
+			r.Get("/teams/{teamID}/meetings/{meetingID}", a.getMeeting)
+			r.Patch("/teams/{teamID}/meetings/{meetingID}", a.updateMeeting)
+			r.Delete("/teams/{teamID}/meetings/{meetingID}", a.deleteMeeting)
+			r.Post("/teams/{teamID}/meetings/{meetingID}/minutes", a.startMinutes)
+			r.Post("/teams/{teamID}/meetings/{meetingID}/confirm", a.confirmMeeting)
+			r.Post("/teams/{teamID}/meetings/{meetingID}/audio", a.startAudio)
+			r.Post("/teams/{teamID}/meetings/{meetingID}/audio/{audioID}/chunks/{seq}", a.appendAudio)
+			r.Post("/teams/{teamID}/meetings/{meetingID}/audio/{audioID}/finish", a.finishAudio)
+			r.Get("/teams/{teamID}/meetings/{meetingID}/audio/{audioID}", a.getAudio)
+			r.Delete("/teams/{teamID}/meetings/{meetingID}/audio/{audioID}", a.deleteAudio)
 			r.Post("/invites/{token}/accept", a.acceptInvite)
 
 			r.Get("/ai", a.aiState)

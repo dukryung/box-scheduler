@@ -161,18 +161,24 @@ func (s *Store) taskAssignees(ctx context.Context, where string, arg string) (ma
 
 func (s *Store) CreateTeamTask(ctx context.Context, teamID, userID string, f TeamTaskFields, assignees []AssigneeInput) (TeamTask, error) {
 	var id string
-	err := s.inTx(ctx, func(tx pgx.Tx) error {
-		if err := tx.QueryRow(ctx, `INSERT INTO team_tasks (team_id, title, note, status, start_date, due_date, estimate_boxes, created_by, done_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $4 = 'done' THEN now() END) RETURNING id::text`,
-			teamID, f.Title, f.Note, f.Status, f.StartDate, f.DueDate, f.EstimateBoxes, userID).Scan(&id); err != nil {
-			return mapErr(err)
-		}
-		return setAssignees(ctx, tx, teamID, id, assignees)
+	err := s.inTx(ctx, func(tx pgx.Tx) (err error) {
+		id, err = insertTeamTask(ctx, tx, teamID, userID, f, assignees)
+		return err
 	})
 	if err != nil {
 		return TeamTask{}, err
 	}
 	return s.TeamTaskByID(ctx, teamID, id)
+}
+
+func insertTeamTask(ctx context.Context, tx pgx.Tx, teamID, userID string, f TeamTaskFields, assignees []AssigneeInput) (string, error) {
+	var id string
+	if err := tx.QueryRow(ctx, `INSERT INTO team_tasks (team_id, title, note, status, start_date, due_date, estimate_boxes, created_by, done_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CASE WHEN $4 = 'done' THEN now() END) RETURNING id::text`,
+		teamID, f.Title, f.Note, f.Status, f.StartDate, f.DueDate, f.EstimateBoxes, userID).Scan(&id); err != nil {
+		return "", mapErr(err)
+	}
+	return id, setAssignees(ctx, tx, teamID, id, assignees)
 }
 
 // UpdateTeamTask saves all fields; assignees are replaced unless nil.

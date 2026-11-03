@@ -106,6 +106,7 @@ type Provider interface {
 	Assistant
 	Tidier
 	Breakdowner
+	Minuter
 }
 
 // caller makes one Claude call whose output is constrained to schema and

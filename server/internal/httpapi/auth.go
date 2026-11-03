@@ -138,13 +138,24 @@ func sameOrigin(next http.Handler) http.Handler {
 		switch r.Method {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
 		default:
-			if r.Header.Get("Sec-Fetch-Site") == "cross-site" || !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+			if r.Header.Get("Sec-Fetch-Site") == "cross-site" || !allowedBody(r) {
 				writeError(w, http.StatusForbidden, "허용되지 않은 요청이에요")
 				return
 			}
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// allowedBody accepts JSON, and raw bytes for a recording piece. Neither can be
+// sent by another site's form: a page elsewhere would need a CORS preflight,
+// which this server never answers.
+func allowedBody(r *http.Request) bool {
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "application/json") {
+		return true
+	}
+	return ct == "application/octet-stream" && r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/audio/") && strings.Contains(r.URL.Path, "/chunks/")
 }
 
 type credentials struct {

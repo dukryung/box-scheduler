@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 // The Web Speech API is not in TypeScript's DOM types everywhere; this is the part we use.
-interface RecognitionResult {
+export interface RecognitionResult {
   readonly isFinal: boolean
   readonly 0: { readonly transcript: string }
 }
-interface RecognitionEvent {
+export interface RecognitionEvent {
   readonly resultIndex: number
   readonly results: ArrayLike<RecognitionResult>
 }
-interface Recognition {
+export interface Recognition {
   lang: string
   interimResults: boolean
   continuous: boolean
@@ -22,12 +22,12 @@ interface Recognition {
 }
 type RecognitionCtor = new () => Recognition
 
-function recognitionCtor(): RecognitionCtor | undefined {
+export function recognitionCtor(): RecognitionCtor | undefined {
   const w = window as unknown as { SpeechRecognition?: RecognitionCtor; webkitSpeechRecognition?: RecognitionCtor }
   return w.SpeechRecognition ?? w.webkitSpeechRecognition
 }
 
-const ERRORS: Record<string, string> = {
+export const SPEECH_ERRORS: Record<string, string> = {
   'not-allowed': '마이크 권한을 허용해 주세요',
   'service-not-allowed': '마이크 권한을 허용해 주세요',
   'no-speech': '말소리가 들리지 않았어요',
@@ -85,7 +85,7 @@ export function useSpeech(onDone: (text: string) => void) {
       armSilenceTimer()
     }
     rec.onerror = (e) => {
-      if (e.error !== 'aborted') setError(ERRORS[e.error] ?? '음성 인식에 실패했어요')
+      if (e.error !== 'aborted') setError(SPEECH_ERRORS[e.error] ?? '음성 인식에 실패했어요')
     }
     rec.onend = () => {
       if (silenceRef.current) clearTimeout(silenceRef.current)

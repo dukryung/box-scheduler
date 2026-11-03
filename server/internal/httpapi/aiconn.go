@@ -29,7 +29,7 @@ var aiFeatures = []string{"plan", "request", "tidy"}
 
 func featureChoice(s store.AISettings, feature string) string {
 	switch feature {
-	case "plan", "revise", "breakdown": // revising a plan and splitting a task use the planning AI
+	case "plan", "revise", "breakdown", "minutes": // revising, splitting a task and meeting minutes use the planning AI
 		return s.Plan
 	case "request":
 		return s.Request
@@ -205,6 +205,16 @@ func (t *trackedAI) Breakdown(ctx context.Context, req ai.BreakdownRequest) (pla
 func (t *trackedAI) Tidy(ctx context.Context, text string) (out string, err error) {
 	err = t.run(ctx, func(ctx context.Context) error { out, err = t.p.Tidy(ctx, text); return err })
 	return out, err
+}
+
+func (t *trackedAI) MeetingPart(ctx context.Context, req ai.MeetingRequest) (part ai.MeetingPart, err error) {
+	err = t.run(ctx, func(ctx context.Context) error { part, err = t.p.MeetingPart(ctx, req); return err })
+	return part, err
+}
+
+func (t *trackedAI) MergeMinutes(ctx context.Context, req ai.MergeRequest) (m ai.MeetingMinutes, err error) {
+	err = t.run(ctx, func(ctx context.Context) error { m, err = t.p.MergeMinutes(ctx, req); return err })
+	return m, err
 }
 
 // aiQueue tells a waiting screen how busy the service AI is.

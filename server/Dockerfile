@@ -24,6 +24,8 @@ ARG CLAUDE_CODE_VERSION=2.1.296
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && npm cache clean --force
 ENV DISABLE_AUTOUPDATER=1
 COPY --from=build /out/api /usr/local/bin/api
+# Meeting recordings (a volume is mounted here; a new one takes this owner).
+RUN mkdir -p /data/meetings && chown node:node /data/meetings
 USER node
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/api"]

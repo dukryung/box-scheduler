@@ -18,6 +18,10 @@ import type {
   TeamTask,
   TeamTaskInput,
   TeamPlan,
+  Meeting,
+  MeetingAudio,
+  MeetingInput,
+  MeetingTask,
   PlanPerson,
   PlanSub,
   AssistantTurn,
@@ -60,10 +64,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await res.json().catch(() => ({}))
     const signedOut = res.status === 401 || (res.status === 403 && body.error === '이용이 정지된 계정이에요')
     if (signedOut && !path.startsWith('/auth/')) onSignedOut()
-    if (res.status === 409 && !path.startsWith('/auth/')) throw new ApiError(409, OVERLAP_MESSAGE)
+    // The server's overlap error is in English; other conflicts carry their own message.
+    if (res.status === 409 && (!body.error || body.error === 'time block overlaps an existing block')) throw new ApiError(409, OVERLAP_MESSAGE)
     throw new ApiError(res.status, body.error ?? `HTTP ${res.status}`, body.code)
   }
   return (res.status === 204 ? undefined : res.json()) as Promise<T>
+}
+
+/** Sends raw bytes (a recording piece); answers like request. */
+function upload<T>(path: string, data: Blob, signal?: AbortSignal): Promise<T> {
+  return request<T>(path, { method: 'POST', body: data, signal, headers: { 'Content-Type': 'application/octet-stream' } })
 }
 
 export type NewBlock = Pick<Block, 'date' | 'startSlot' | 'endSlot' | 'title'> &
@@ -148,6 +158,21 @@ export const teamApi = {
   planPreview: (id: string, taskId: string, b: PlanBody) => request<TeamPlan>(`/teams/${id}/tasks/${taskId}/plan/preview`, post(b)),
   planApply: (id: string, taskId: string, b: PlanBody) =>
     request<{ created: number; people: PlanPerson[]; task: TeamTask }>(`/teams/${id}/tasks/${taskId}/plan/apply`, post(b)),
+  meetings: (id: string) => request<{ meetings: Meeting[] }>(`/teams/${id}/meetings`),
+  meeting: (id: string, meetingId: string) => request<Meeting>(`/teams/${id}/meetings/${meetingId}`),
+  createMeeting: (id: string, m: MeetingInput) => request<Meeting>(`/teams/${id}/meetings`, post(m)),
+  updateMeeting: (id: string, meetingId: string, m: MeetingInput) =>
+    request<Meeting>(`/teams/${id}/meetings/${meetingId}`, { method: 'PATCH', body: JSON.stringify(m) }),
+  deleteMeeting: (id: string, meetingId: string) => request<void>(`/teams/${id}/meetings/${meetingId}`, { method: 'DELETE' }),
+  writeMinutes: (id: string, meetingId: string) => request<Meeting>(`/teams/${id}/meetings/${meetingId}/minutes`, { method: 'POST' }),
+  confirmMeeting: (id: string, meetingId: string, tasks: MeetingTask[]) => request<Meeting>(`/teams/${id}/meetings/${meetingId}/confirm`, post({ tasks })),
+  startAudio: (id: string, meetingId: string, mime: string) => request<MeetingAudio>(`/teams/${id}/meetings/${meetingId}/audio`, post({ mime })),
+  audioChunk: (id: string, meetingId: string, audioId: string, seq: number, data: Blob, signal?: AbortSignal) =>
+    upload<MeetingAudio>(`/teams/${id}/meetings/${meetingId}/audio/${audioId}/chunks/${seq}`, data, signal),
+  finishAudio: (id: string, meetingId: string, audioId: string, durationSec: number) =>
+    request<MeetingAudio>(`/teams/${id}/meetings/${meetingId}/audio/${audioId}/finish`, post({ durationSec })),
+  deleteAudio: (id: string, meetingId: string, audioId: string) => request<void>(`/teams/${id}/meetings/${meetingId}/audio/${audioId}`, { method: 'DELETE' }),
+  audioURL: (id: string, meetingId: string, audioId: string) => `/api/teams/${id}/meetings/${meetingId}/audio/${audioId}`,
 }
 
 export const aiApi = {
