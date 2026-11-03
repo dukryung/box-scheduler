@@ -2,14 +2,17 @@
 // finds the tasks in the background (a long meeting part by part), and a
 // manager gives each task to someone and confirms, which makes team tasks.
 // A meeting can also be recorded: the recording is uploaded piece by piece and
-// the browser's live captions become the meeting's text.
+// the browser's live captions become the meeting's text. On the Mac mini a
+// recording is then written down again by speaker (e2e/fake-stt.mjs here).
 import { chromium } from 'playwright-core'
 import { BASE, call, checker, launch, OWNER, removeUser, watchErrors } from './lib.mjs'
 import { startFakeSMTP } from './fake-smtp.mjs'
+import { startFakeSTT } from './fake-stt.mjs'
 
 const { check, failed } = checker()
 const errors = []
 const smtp = await startFakeSMTP()
+const sttFake = await startFakeSTT()
 const browser = await launch()
 // A browser with a stand-in microphone (a tone) that is allowed without asking.
 const micBrowser = await chromium.launch({
@@ -190,6 +193,53 @@ try {
   check((await A(seojun, 'DELETE', `/${rec.id}`)).status === 403 && (await A(lead, 'DELETE', `/${rec.id}`)).status === 204, 'only its editors delete a recording')
   check((await M(lead, 'GET', `/${rmeet.id}`)).body.audio.length === 0, 'and it is gone')
 
+  // 9. A recording is transcribed by speaker on the Mac mini; people say who is who
+  const recorded = async () => {
+    const x = (await A(lead, 'POST', '', { mime: 'audio/webm' })).body
+    await piece(lead, x.id, 0, 'RECORDING')
+    return x
+  }
+  const sttDone = async (audioId) => {
+    for (let i = 0; i < 60; i++) {
+      const a = (await M(lead, 'GET', `/${rmeet.id}`)).body.audio.find((y) => y.id === audioId)
+      if (a.sttStatus === 'done' || a.sttStatus === 'failed') return a
+      await new Promise((r) => setTimeout(r, 250))
+    }
+    throw new Error('the transcription did not finish')
+  }
+  m = (await M(lead, 'GET', `/${rmeet.id}`)).body
+  check(m.canTranscribe && !(await M(seojun, 'GET', `/${rmeet.id}`)).body.canTranscribe, 'its editors may transcribe a recording')
+  const take1 = await recorded()
+  check((await A(lead, 'POST', `/${take1.id}/transcribe`, {})).status === 409, 'a recording still going is not transcribed')
+  await A(lead, 'POST', `/${take1.id}/finish`, { durationSec: 8 })
+  check((await A(seojun, 'POST', `/${take1.id}/transcribe`, {})).status === 403, "a member cannot transcribe someone else's meeting")
+  r = await A(lead, 'POST', `/${take1.id}/transcribe`, { speakers: 2 })
+  check(r.status === 202 && r.body.sttStatus === 'queued', 'transcribing starts in the background')
+  check((await A(lead, 'POST', `/${take1.id}/transcribe`, {})).status === 409, 'and not twice at once')
+  let a1 = await sttDone(take1.id)
+  const sent = sttFake.received.at(-1)
+  check(sent.bytes === 9 && sent.type === 'audio/webm' && sent.speakers === '2' && sent.language === 'ko' && sent.prompt.includes('민지') && sent.prompt.includes('서준'), 'the whole recording went to the Mac mini, with the team\'s names to spell')
+  check(a1.sttStatus === 'done' && a1.segments.length === 3 && a1.segments[1].speaker === 2, 'it comes back as turns of two speakers')
+  check((await A(lead, 'PUT', `/${take1.id}/speakers`, { names: { x: '민지' } })).status === 400, 'speakers are numbered')
+  a1 = (await A(lead, 'PUT', `/${take1.id}/speakers`, { names: { 1: '민지', 2: '서준' } })).body
+  check(a1.speakerNames['1'] === '민지' && a1.speakerNames['2'] === '서준', 'people say who each speaker is')
+  m = (await M(lead, 'POST', `/${rmeet.id}/use-transcription`)).body
+  check(m.transcript === '민지: 오늘은 출시 일정을 봤어요\n서준: 결제 화면 수정 할게요\n민지: 공지 메일 11/20까지 작성할게요', 'the transcription becomes the meeting\'s text, a line per turn by name')
+  await M(lead, 'POST', `/${rmeet.id}/minutes`)
+  m = await settle(rmeet.id)
+  const byTitle = Object.fromEntries(m.tasks.map((t) => [t.title, t.assigneeId]))
+  check(m.tasks.length === 2 && Object.values(byTitle).includes(seojun.id) && Object.values(byTitle).includes(minji.id), 'and the AI gives each task to the speaker who took it')
+  const take2 = await recorded()
+  await A(lead, 'POST', `/${take2.id}/finish`, { durationSec: 8 })
+  await A(lead, 'POST', `/${take2.id}/transcribe`, { speakers: 7 })
+  let a2 = await sttDone(take2.id)
+  check(a2.sttStatus === 'failed' && a2.sttError.length > 0, 'a failed transcription says so')
+  r = await A(lead, 'POST', `/${take2.id}/transcribe`, { thenMinutes: true })
+  check(r.status === 202 && r.body.sttThenMinutes, 'it can be tried again, this time going on to the minutes')
+  await sttDone(take2.id)
+  m = await settle(rmeet.id)
+  check(m.status === 'ready' && m.transcript.includes('화자 1: 오늘은 출시 일정을 봤어요') && m.transcript.startsWith('민지: '), 'then the text is every transcription (unnamed speakers by number) and the minutes are written')
+
   // 8. In the app: record a meeting with live captions, then let the AI write it up
   const mic = await micBrowser.newContext({ viewport: { width: 1440, height: 900 } })
   await mic.addCookies([{ name: 'bs_session', value: lead.cookie, url: BASE }])
@@ -211,13 +261,22 @@ try {
   check((await recView.getByRole('region', { name: '할 일' }).getByRole('listitem').count()) === 2, 'the AI wrote up the captions: two tasks')
   const recId = new URL(mp.url()).searchParams.get('meeting')
   m = (await M(lead, 'GET', `/${recId}`)).body
-  check(m.transcript.split('\n').length === 3 && m.transcript.startsWith('민지: 오늘은 출시 일정을 봤어요'), 'the captions became the text, one phrase a line')
+  check(m.transcript.split('\n').length === 3 && m.transcript.startsWith('화자 1: 오늘은 출시 일정을 봤어요'), 'the recording was transcribed by speaker and became the text')
+  check(m.audio[0]?.sttStatus === 'done', 'its transcription is kept with the recording')
   check(m.audio.length === 1 && m.audio[0].finished && m.audio[0].bytes > 1000 && m.audio[0].durationSec >= 2, `the recording was saved (${m.audio[0]?.bytes} bytes, ${m.audio[0]?.durationSec}s)`)
   await recView.getByRole('listitem', { name: '녹음 1' }).getByRole('button', { name: '듣기' }).click()
   const player = recView.locator('audio')
   await player.waitFor()
   const playable = await player.evaluate((el) => new Promise((done) => (el.readyState >= 1 ? done(true) : ((el.onloadedmetadata = () => done(true)), (el.onerror = () => done(false))))))
   check(playable, 'the recording plays in the page')
+  const said = recView.getByRole('listitem', { name: '녹음 1' }).getByLabel('받아쓰기')
+  await said.getByRole('button', { name: /받아쓰기 · 화자 2명/ }).click()
+  await said.getByLabel('화자 2 이름').selectOption('서준')
+  await said.locator('p', { hasText: /서준\s*결제 화면 수정 할게요/ }).waitFor()
+  await said.getByRole('button', { name: '회의 내용으로 쓰기' }).click()
+  await said.getByRole('button', { name: '바꾸기' }).click()
+  await recView.getByText('받아쓰기를 회의 내용에 넣었어요').waitFor()
+  check((await recView.getByRole('textbox', { name: '회의 내용' }).inputValue()).includes('서준: 결제 화면 수정 할게요'), 'in the app, naming a speaker and using the transcription puts their name in the text')
   await mic.close()
 
   // A member sees a meeting read-only
@@ -233,5 +292,6 @@ try {
   await browser.close()
   await micBrowser.close()
   smtp.server.close()
+  sttFake.server.close()
 }
 process.exit(failed() ? 1 : 0)

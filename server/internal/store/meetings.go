@@ -44,9 +44,10 @@ type Meeting struct {
 	Tasks           []MeetingTask  `json:"tasks"`
 	Audio           []MeetingAudio `json:"audio"`
 	// What the caller may do with it, worked out from their role.
-	CanEdit    bool `json:"canEdit"`
-	CanConfirm bool `json:"canConfirm"`
-	CanDelete  bool `json:"canDelete"`
+	CanEdit       bool `json:"canEdit"`
+	CanConfirm    bool `json:"canConfirm"`
+	CanDelete     bool `json:"canDelete"`
+	CanTranscribe bool `json:"canTranscribe"`
 }
 
 // MeetingTask is a task found in a meeting; once confirmed it points at the team task it became.

@@ -22,6 +22,7 @@ import (
 	"box-scheduler/server/internal/notify"
 	"box-scheduler/server/internal/secretbox"
 	"box-scheduler/server/internal/store"
+	"box-scheduler/server/internal/stt"
 )
 
 func main() {
@@ -58,6 +59,9 @@ func run() error {
 	if err := st.ResetMeetingAI(ctx, "서버가 다시 시작돼 회의록 정리가 멈췄어요. 다시 해 주세요"); err != nil {
 		slog.Warn("reset meeting write-ups", "err", err)
 	}
+	if err := st.ResetTranscribe(ctx, "서버가 다시 시작돼 받아쓰기가 멈췄어요. 다시 해 주세요"); err != nil {
+		slog.Warn("reset transcriptions", "err", err)
+	}
 	publicURL := strings.TrimRight(envOr("PUBLIC_URL", "http://localhost:3080"), "/")
 	opts := httpapi.Options{
 		CookieSecure: os.Getenv("COOKIE_SECURE") == "true",
@@ -85,6 +89,9 @@ func run() error {
 				slog.Info("swept meeting recordings", "removed", n, "err", err)
 			}
 		}
+	}
+	if u := os.Getenv("STT_URL"); u != "" && opts.AudioDir != "" {
+		opts.STT = stt.New(u)
 	}
 	opts.PublicURL = publicURL
 	opts.Mail = &mail.SMTP{

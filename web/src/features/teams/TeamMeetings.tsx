@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { teamApi } from '../../api/client'
-import type { Meeting, MeetingStatus, MeetingTask, Minutes, TeamDetail } from '../../api/types'
+import type { Meeting, MeetingAudio, MeetingStatus, MeetingTask, Minutes, TeamDetail } from '../../api/types'
 import { AIError } from '../../components/AIError'
 import { ConfirmInline } from '../../components/ConfirmInline'
 import { ChevronLeft, Close, Mic, Plus, Sparkle } from '../../components/icons'
@@ -32,6 +32,9 @@ const clock = (sec: number) => {
   const ss = String(sec % 60).padStart(2, '0')
   return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
 }
+/** About how long the Mac mini takes for a recording (Whisper and diarization, about a quarter of its length). */
+const eta = (sec: number) => (sec < 120 ? '1~2분쯤 걸려요' : `${Math.ceil((sec * 0.3) / 60)}분쯤 걸려요`)
+const STAGE: Record<string, string> = { decode: '녹음 여는 중', transcribe: '받아쓰는 중', diarize: '화자 나누는 중' }
 const fileSize = (n: number) => (n < 1048576 ? `${Math.max(1, Math.round(n / 1024))}KB` : `${(n / 1048576).toFixed(n < 10485760 ? 1 : 0)}MB`)
 /** The text so far with what was heard added on new lines. */
 const withCaptions = (base: string, heard: string[]) => [base.trim(), ...heard].filter(Boolean).join('\n')
@@ -270,6 +273,22 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
     return () => clearInterval(t)
   }, [processing, team.id, id, take])
 
+  // While a recording is transcribed on the Mac mini, check on it too.
+  const transcribing = !!m?.audio.some((a) => a.sttStatus === 'queued' || a.sttStatus === 'running')
+  const shown = useRef<Meeting | null>(null)
+  shown.current = m
+  useEffect(() => {
+    if (!transcribing || processing) return
+    const t = setInterval(() => {
+      teamApi.meeting(team.id, id).then(
+        // The text changes when the transcription goes straight on to the minutes.
+        (x) => (x.status !== shown.current?.status || x.transcript !== shown.current?.transcript ? take(x) : setM(x)),
+        () => {},
+      )
+    }, 3000)
+    return () => clearInterval(t)
+  }, [transcribing, processing, team.id, id, take])
+
   // What is heard goes into the meeting's text as it comes, and is saved every half minute.
   useEffect(() => {
     if (rec.state === 'recording' || rec.state === 'stopping') setTranscript(withCaptions(base.current, rec.lines))
@@ -357,6 +376,21 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
       let x = await teamApi.updateMeeting(team.id, m.id, { transcript: text })
       const length = r.audio ? ` (${clock(r.audio.durationSec)})` : ''
       const cut = r.lost ? ` 녹음 조각 ${r.lost}개를 보내지 못해 그 부분이 빠졌어요.` : ''
+      // On the Mac mini the recording is written down again, carefully and by speaker.
+      if (m.canTranscribe && r.audio && r.audio.bytes > 0) {
+        try {
+          const a = await teamApi.transcribeAudio(team.id, m.id, r.audio.id, { thenMinutes: thenSummarize })
+          setM({ ...x, audio: x.audio.map((y) => (y.id === a.id ? a : y)) })
+          setTranscript(x.transcript ?? '')
+          setNotice(
+            `녹음${length}을 저장했어요.${cut} Mac mini에서 화자를 나눠 다시 받아쓰고 있어요(${eta(r.audio.durationSec)}).` +
+              (thenSummarize ? ' 끝나면 그 내용으로 AI가 회의록을 정리해요.' : ' 끝나면 누가 누구인지 정해 회의 내용으로 넣을 수 있어요.'),
+          )
+          return
+        } catch {
+          // Not now (the Mac mini is off, say): go on with the captions.
+        }
+      }
       if (thenSummarize && text.trim()) {
         x = await teamApi.writeMinutes(team.id, m.id)
         take(x)
@@ -503,6 +537,21 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
                   </span>
                 </div>
                 {playing === a.id && <audio controls autoPlay src={teamApi.audioURL(team.id, m.id, a.id)} className="h-9 w-full" />}
+                {!recording && (
+                  <Transcription
+                    team={team}
+                    m={m}
+                    a={a}
+                    disabled={busy}
+                    onAudio={(x) => setM((cur) => (cur ? { ...cur, audio: cur.audio.map((y) => (y.id === x.id ? x : y)) } : cur))}
+                    onUse={(x) => {
+                      setM(x)
+                      setTranscript(x.transcript ?? '')
+                      setShowTranscript(true)
+                      setNotice('받아쓰기를 회의 내용에 넣었어요. AI로 회의록을 정리할 수 있어요.')
+                    }}
+                  />
+                )}
                 {asking === `audio:${a.id}` && (
                   <ConfirmInline message="이 녹음 파일을 지워요. 회의 내용은 그대로예요." onConfirm={() => void removeAudio(a.id)} onCancel={() => setAsking(null)} />
                 )}
@@ -666,5 +715,147 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
       )}
       {!editable && m.status !== 'confirmed' && !m.canConfirm && <p className="text-xs text-muted">회의를 만든 사람과 매니저가 고치고, 매니저가 확정해요.</p>}
     </section>
+  )
+}
+
+interface TranscriptionProps {
+  team: TeamDetail
+  m: Meeting
+  a: MeetingAudio
+  disabled: boolean
+  onAudio: (a: MeetingAudio) => void
+  onUse: (m: Meeting) => void
+}
+
+/** A recording's careful transcription: start it, see how far it is, say who each speaker is, and use it. */
+function Transcription({ team, m, a, disabled, onAudio, onUse }: TranscriptionProps) {
+  const [speakers, setSpeakers] = useState(0)
+  const [open, setOpen] = useState(false)
+  const [asking, setAsking] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const run = async (fn: () => Promise<void>) => {
+    setBusy(true)
+    setError(null)
+    try {
+      await fn()
+    } catch (e) {
+      setError((e as Error).message)
+    }
+    setBusy(false)
+  }
+  const start = () => run(async () => onAudio(await teamApi.transcribeAudio(team.id, m.id, a.id, { speakers })))
+  const name = (n: number) => a.speakerNames[String(n)] || `화자 ${n}`
+  const nameSpeaker = (n: number, who: string) =>
+    run(async () => {
+      const names = { ...a.speakerNames, [String(n)]: who }
+      if (!who) delete names[String(n)]
+      onAudio(await teamApi.setSpeakers(team.id, m.id, a.id, names))
+    })
+  const use = () =>
+    run(async () => {
+      setAsking(false)
+      onUse(await teamApi.useTranscription(team.id, m.id))
+    })
+  const people = team.memberList.map((p) => p.name || p.email.split('@')[0])
+  const segments = a.segments ?? []
+  const heard = [...new Set(segments.map((s) => s.speaker))].sort((x, y) => x - y)
+  const going = a.sttStatus === 'queued' || a.sttStatus === 'running'
+  const canStart = m.canTranscribe && a.finished && a.bytes > 0 && !going
+
+  const startControls = (label: string) => (
+    <span className="flex items-center gap-1.5">
+      <select aria-label="말한 사람 수" value={speakers} onChange={(e) => setSpeakers(Number(e.target.value))} className="h-8 rounded-md border border-line-strong bg-surface px-1.5 text-xs text-ink">
+        <option value={0}>인원 자동</option>
+        {[2, 3, 4, 5, 6, 7, 8].map((n) => (
+          <option key={n} value={n}>
+            {n}명
+          </option>
+        ))}
+      </select>
+      <button className={`${aiOutlineButton} h-8 px-2.5 text-xs`} disabled={disabled || busy} onClick={() => void start()}>
+        <Sparkle size={12} /> {label}
+      </button>
+    </span>
+  )
+
+  if (a.sttStatus === 'none') {
+    if (!canStart) return null
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+        <span>Mac mini에서 화자를 나눠 정확하게 다시 받아쓸 수 있어요 ({eta(a.durationSec)})</span>
+        {startControls('받아쓰기')}
+        {error && <span className="text-danger">{error}</span>}
+      </div>
+    )
+  }
+  if (going) {
+    return (
+      <div role="status" aria-label="받아쓰기 중" className="flex items-center gap-2 text-xs text-ai-ink">
+        <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-ai border-t-transparent" />
+        {a.sttStatus === 'queued' ? '받아쓰기 기다리는 중' : (STAGE[a.sttStage] ?? '받아쓰는 중')} · {eta(a.durationSec)}
+        {a.sttThenMinutes ? '. 끝나면 AI가 회의록을 정리해요' : ''}
+      </div>
+    )
+  }
+  if (a.sttStatus === 'failed') {
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-danger">{a.sttError || '받아쓰지 못했어요'}</span>
+        {canStart && startControls('다시 받아쓰기')}
+        {error && <span className="text-danger">{error}</span>}
+      </div>
+    )
+  }
+  return (
+    <div aria-label="받아쓰기" className="flex flex-col gap-2 text-xs">
+      <div className="flex flex-wrap items-center gap-2">
+        <button className="font-semibold text-ink-2 hover:text-ink" aria-expanded={open} onClick={() => setOpen(!open)}>
+          받아쓰기 · 화자 {heard.length}명 <span className="font-normal text-muted">{open ? '접기' : '보기'}</span>
+        </button>
+        {m.canEdit && segments.length > 0 && (
+          <button className={`${secondaryButton} ml-auto h-8 px-2.5 text-xs`} disabled={disabled || busy} onClick={() => (m.transcript?.trim() ? setAsking(true) : void use())}>
+            회의 내용으로 쓰기
+          </button>
+        )}
+      </div>
+      {asking && <ConfirmInline message="지금 회의 내용을 받아쓰기 결과로 바꿔요." confirmLabel="바꾸기" onConfirm={() => void use()} onCancel={() => setAsking(false)} />}
+      {open && (
+        <>
+          {m.canEdit && heard.length > 0 && (
+            <ul aria-label="화자 이름" className="flex flex-col gap-1.5 rounded-lg bg-surface p-2">
+              {heard.map((n) => {
+                const first = segments.find((s) => s.speaker === n)?.text ?? ''
+                const current = a.speakerNames[String(n)] ?? ''
+                return (
+                  <li key={n} className="flex flex-wrap items-center gap-2">
+                    <span className="w-12 shrink-0 font-semibold text-ink-2">화자 {n}</span>
+                    <select aria-label={`화자 ${n} 이름`} value={current} disabled={busy} onChange={(e) => void nameSpeaker(n, e.target.value)} className="h-8 min-w-28 rounded-md border border-line-strong bg-surface px-1.5 text-xs text-ink">
+                      <option value="">누구인지 고르기</option>
+                      {[...new Set([...people, ...(current ? [current] : [])])].map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="min-w-0 flex-1 truncate text-muted">“{first}”</span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          <div className="max-h-72 overflow-y-auto rounded-lg bg-surface px-3 py-2 leading-relaxed">
+            {segments.length === 0 && <p className="text-muted">알아들은 말이 없어요.</p>}
+            {segments.map((s, i) => (
+              <p key={i} className="text-ink-2">
+                <span className="font-mono text-[11px] text-muted">{clock(Math.floor(s.start))}</span> <span className="font-semibold">{name(s.speaker)}</span> {s.text}
+              </p>
+            ))}
+          </div>
+          {canStart && <div className="flex justify-end">{startControls('다시 받아쓰기')}</div>}
+        </>
+      )}
+      {error && <span className="text-danger">{error}</span>}
+    </div>
   )
 }

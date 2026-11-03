@@ -454,6 +454,8 @@ export interface Meeting {
   canEdit: boolean
   canConfirm: boolean
   canDelete: boolean
+  /** Recordings can be transcribed on the Mac mini (set up on this server, and the person may edit). */
+  canTranscribe: boolean
 }
 
 export interface MeetingInput {
@@ -476,4 +478,25 @@ export interface MeetingAudio {
   finished: boolean
   createdByName: string
   createdAt: string
+  /** Careful transcription on the Mac mini, with the speakers told apart. */
+  sttStatus: TranscribeStatus
+  /** While running: decode, transcribe or diarize. */
+  sttStage: string
+  sttError: string
+  segments: TranscriptSegment[] | null
+  /** Who "화자 1", "화자 2", ... are: {"1": "김민지"}. */
+  speakerNames: Record<string, string>
+  /** The meeting's text becomes the transcription and the AI writes the minutes when it is done. */
+  sttThenMinutes: boolean
+  sttStartedAt: string | null
+}
+
+export type TranscribeStatus = 'none' | 'queued' | 'running' | 'done' | 'failed'
+
+export interface TranscriptSegment {
+  /** Seconds into the recording. */
+  start: number
+  end: number
+  speaker: number
+  text: string
 }

@@ -46,6 +46,12 @@ func withMeetingPermissions(role, userID string, m store.Meeting) store.Meeting 
 	return m
 }
 
+func (a *API) withMeetingPermissions(role, userID string, m store.Meeting) store.Meeting {
+	m = withMeetingPermissions(role, userID, m)
+	m.CanTranscribe = m.CanEdit && a.opts.STT != nil && a.opts.AudioDir != ""
+	return m
+}
+
 type meetingBody struct {
 	Title      *string              `json:"title"`
 	HeldOn     *string              `json:"heldOn"`
@@ -149,7 +155,7 @@ func (a *API) listMeetings(w http.ResponseWriter, r *http.Request) {
 	}
 	me := currentUser(r).ID
 	for i := range list {
-		list[i] = withMeetingPermissions(role, me, list[i])
+		list[i] = a.withMeetingPermissions(role, me, list[i])
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"meetings": list})
 }
@@ -174,7 +180,7 @@ func (a *API) createMeeting(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, withMeetingPermissions(role, me, m))
+	writeJSON(w, http.StatusCreated, a.withMeetingPermissions(role, me, m))
 }
 
 // loadMeeting reads the meeting in the URL for someone in its team.
@@ -188,7 +194,7 @@ func (a *API) loadMeeting(w http.ResponseWriter, r *http.Request) (string, strin
 		writeStoreError(w, err)
 		return "", "", m, false
 	}
-	return teamID, role, withMeetingPermissions(role, currentUser(r).ID, m), true
+	return teamID, role, a.withMeetingPermissions(role, currentUser(r).ID, m), true
 }
 
 func writeMeetingError(w http.ResponseWriter, err error) {
@@ -241,7 +247,7 @@ func (a *API) updateMeeting(w http.ResponseWriter, r *http.Request) {
 		writeMeetingError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, withMeetingPermissions(role, currentUser(r).ID, m))
+	writeJSON(w, http.StatusOK, a.withMeetingPermissions(role, currentUser(r).ID, m))
 }
 
 func (a *API) deleteMeeting(w http.ResponseWriter, r *http.Request) {
@@ -286,22 +292,30 @@ func (a *API) startMinutes(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	parts := splitTranscript(cur.Transcript, meetingPartRunes)
-	steps := len(parts)
-	if steps > 1 {
-		steps++ // merging the parts' minutes
-	}
-	if err := a.store.StartMeetingAI(r.Context(), teamID, cur.ID, steps); err != nil {
+	if err := a.beginMinutes(r.Context(), me.ID, teamID, cur, members, p); err != nil {
 		writeMeetingError(w, err)
 		return
 	}
-	go a.writeMinutes(me.ID, teamID, cur, members, parts, p)
 	m, err := a.store.MeetingByID(r.Context(), teamID, cur.ID)
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, withMeetingPermissions(role, me.ID, m))
+	writeJSON(w, http.StatusAccepted, a.withMeetingPermissions(role, me.ID, m))
+}
+
+// beginMinutes marks the meeting as being written up and starts the work.
+func (a *API) beginMinutes(ctx context.Context, userID, teamID string, m store.Meeting, members []store.TeamMember, p ai.Provider) error {
+	parts := splitTranscript(m.Transcript, meetingPartRunes)
+	steps := len(parts)
+	if steps > 1 {
+		steps++ // merging the parts' minutes
+	}
+	if err := a.store.StartMeetingAI(ctx, teamID, m.ID, steps); err != nil {
+		return err
+	}
+	go a.writeMinutes(userID, teamID, m, members, parts, p)
+	return nil
 }
 
 // writeMinutes reads the meeting part by part, merges the parts, and saves the
@@ -555,5 +569,5 @@ func (a *API) confirmMeeting(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, withMeetingPermissions(role, me.ID, m))
+	writeJSON(w, http.StatusOK, a.withMeetingPermissions(role, me.ID, m))
 }

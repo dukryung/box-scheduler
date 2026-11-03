@@ -173,6 +173,11 @@ export const teamApi = {
     request<MeetingAudio>(`/teams/${id}/meetings/${meetingId}/audio/${audioId}/finish`, post({ durationSec })),
   deleteAudio: (id: string, meetingId: string, audioId: string) => request<void>(`/teams/${id}/meetings/${meetingId}/audio/${audioId}`, { method: 'DELETE' }),
   audioURL: (id: string, meetingId: string, audioId: string) => `/api/teams/${id}/meetings/${meetingId}/audio/${audioId}`,
+  transcribeAudio: (id: string, meetingId: string, audioId: string, opts: { speakers?: number; thenMinutes?: boolean } = {}) =>
+    request<MeetingAudio>(`/teams/${id}/meetings/${meetingId}/audio/${audioId}/transcribe`, post(opts)),
+  setSpeakers: (id: string, meetingId: string, audioId: string, names: Record<string, string>) =>
+    request<MeetingAudio>(`/teams/${id}/meetings/${meetingId}/audio/${audioId}/speakers`, { method: 'PUT', body: JSON.stringify({ names }) }),
+  useTranscription: (id: string, meetingId: string) => request<Meeting>(`/teams/${id}/meetings/${meetingId}/use-transcription`, { method: 'POST' }),
 }
 
 export const aiApi = {

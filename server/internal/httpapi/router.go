@@ -19,6 +19,7 @@ import (
 	"box-scheduler/server/internal/notify"
 	"box-scheduler/server/internal/secretbox"
 	"box-scheduler/server/internal/store"
+	"box-scheduler/server/internal/stt"
 )
 
 // OwnerID is the seeded account that owns the data from before accounts existed.
@@ -48,6 +49,8 @@ type Options struct {
 	SecretBox *secretbox.Box
 	// AudioDir keeps meeting recordings ("": recording is off).
 	AudioDir string
+	// STT transcribes recordings on the Mac mini (nil: only the live captions).
+	STT *stt.Client
 	// NetPolicy decides which internal addresses local LLM connections may reach.
 	NetPolicy netguard.Policy
 	// Per-IP limits: log-in attempts per 15 minutes and sign-ups per hour (0 = default).
@@ -192,6 +195,9 @@ func NewRouter(s *store.Store, planner ai.Provider, opts Options) http.Handler {
 			r.Post("/teams/{teamID}/meetings/{meetingID}/audio/{audioID}/finish", a.finishAudio)
 			r.Get("/teams/{teamID}/meetings/{meetingID}/audio/{audioID}", a.getAudio)
 			r.Delete("/teams/{teamID}/meetings/{meetingID}/audio/{audioID}", a.deleteAudio)
+			r.Post("/teams/{teamID}/meetings/{meetingID}/audio/{audioID}/transcribe", a.startTranscribe)
+			r.Put("/teams/{teamID}/meetings/{meetingID}/audio/{audioID}/speakers", a.setSpeakers)
+			r.Post("/teams/{teamID}/meetings/{meetingID}/use-transcription", a.useTranscription)
 			r.Post("/invites/{token}/accept", a.acceptInvite)
 
 			r.Get("/ai", a.aiState)
