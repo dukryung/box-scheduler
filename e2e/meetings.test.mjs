@@ -231,9 +231,17 @@ try {
   check(m.tasks.length === 2 && Object.values(byTitle).includes(seojun.id) && Object.values(byTitle).includes(minji.id), 'and the AI gives each task to the speaker who took it')
   const take2 = await recorded()
   await A(lead, 'POST', `/${take2.id}/finish`, { durationSec: 8 })
-  await A(lead, 'POST', `/${take2.id}/transcribe`, { speakers: 7 })
+  await A(lead, 'POST', `/${take2.id}/transcribe`, { speakers: 7, thenMinutes: true })
+  check((await M(lead, 'POST', `/${rmeet.id}/minutes`)).status === 409, 'no write-up while a recording is still being transcribed')
   let a2 = await sttDone(take2.id)
   check(a2.sttStatus === 'failed' && a2.sttError.length > 0, 'a failed transcription says so')
+  let told2
+  for (let i = 0; i < 40 && !told2; i++) {
+    told2 = (await call('GET', '/notifications', null, lead.cookie)).body.items.find((n) => n.title.includes('받아쓰지 못했어요'))
+    if (!told2) await new Promise((r) => setTimeout(r, 250))
+  }
+  m = await settle(rmeet.id)
+  check(m.status === 'ready' && m.transcript.startsWith('민지: 오늘은') && told2?.body.includes('실시간 자막으로'), 'when it fails, the write-up it was waiting for is made from the text there is')
   r = await A(lead, 'POST', `/${take2.id}/transcribe`, { thenMinutes: true })
   check(r.status === 202 && r.body.sttThenMinutes, 'it can be tried again, this time going on to the minutes')
   await sttDone(take2.id)
@@ -255,10 +263,17 @@ try {
   check((await live.getByLabel('실시간 자막').textContent()).includes('결제 화면 수정 할게요'), 'captions show as people talk, and go on after the speech engine stops by itself')
   check(!mp.url().includes('record=1') && (await mp.getByRole('button', { name: '회의 목록' }).isDisabled()), 'recording started with the new meeting; leaving is held until it ends')
   await mp.waitForTimeout(1500)
-  await live.getByRole('button', { name: '끝내고 AI로 정리' }).click()
+  await live.getByRole('button', { name: '회의 녹음 종료' }).click()
   const recView = mp.getByRole('region', { name: /회의$/ })
+  await recView.getByRole('status', { name: '회의 정리 단계' }).getByText(/텍스트로 받아쓰고/).waitFor()
+  check(await recView.getByRole('button', { name: 'AI로 회의록 정리' }).isDisabled(), 'ending the recording turns it into text first; the write-up waits for that')
   await recView.getByRole('region', { name: '회의록' }).waitFor()
-  check((await recView.getByRole('region', { name: '할 일' }).getByRole('listitem').count()) === 2, 'the AI wrote up the captions: two tasks')
+  check((await recView.getByRole('region', { name: '할 일' }).getByRole('listitem').count()) === 2, 'then the AI suggests the minutes and two tasks')
+  check((await recView.getByText('AI가 제안한 회의록과 할 일이에요').count()) === 1, 'for the lead to look over, fix and assign')
+  check(
+    (await recView.getByRole('region', { name: '할 일' }).getByRole('combobox', { name: /담당자/ }).evaluateAll((s) => s.map((x) => x.value))).every((v) => v === ''),
+    'nobody is assigned when the speakers are not known yet',
+  )
   const recId = new URL(mp.url()).searchParams.get('meeting')
   m = (await M(lead, 'GET', `/${recId}`)).body
   check(m.transcript.split('\n').length === 3 && m.transcript.startsWith('화자 1: 오늘은 출시 일정을 봤어요'), 'the recording was transcribed by speaker and became the text')

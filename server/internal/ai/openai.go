@@ -64,12 +64,35 @@ type chatResponse struct {
 	} `json:"error"`
 }
 
+type steadyKey struct{}
+
+type maxTokensKey struct{}
+
+// withMaxTokens caps how long a local model's answer may run. A small model
+// can fall into repeating itself, and a server that shifts its context keeps
+// going until the call times out; the cap ends that early, as an answer cut
+// off, which is tried again.
+func withMaxTokens(ctx context.Context, n int) context.Context {
+	return context.WithValue(ctx, maxTokensKey{}, n)
+}
+
+// Steady asks a local model for its most likely answer (temperature 0), so the
+// same meeting reads the same each time. A retry goes without it, so it can
+// come out differently.
+func Steady(ctx context.Context) context.Context {
+	return context.WithValue(ctx, steadyKey{}, true)
+}
+
 func (c *openAICaller) call(ctx context.Context, system, prompt string, schema map[string]any, out any) error {
 	messages := []map[string]string{{"role": "system", "content": system}, {"role": "user", "content": prompt}}
+	temperature := 0.2
+	if ctx.Value(steadyKey{}) != nil {
+		temperature = 0
+	}
 	body := map[string]any{
 		"model":       c.Model,
 		"messages":    messages,
-		"temperature": 0.2,
+		"temperature": temperature,
 		"stream":      false,
 		// Reasoning models (Qwen3 and others) think at length by default, which on a
 		// small machine costs minutes; these answers are short and structured.
@@ -79,6 +102,9 @@ func (c *openAICaller) call(ctx context.Context, system, prompt string, schema m
 			"type":        "json_schema",
 			"json_schema": map[string]any{"name": "answer", "strict": false, "schema": schema},
 		},
+	}
+	if n, ok := ctx.Value(maxTokensKey{}).(int); ok {
+		body["max_tokens"] = n
 	}
 	data, status, err := c.post(ctx, "/chat/completions", body)
 	if err == nil && status == http.StatusBadRequest {

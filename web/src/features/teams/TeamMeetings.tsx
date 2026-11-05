@@ -275,19 +275,28 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
 
   // While a recording is transcribed on the Mac mini, check on it too.
   const transcribing = !!m?.audio.some((a) => a.sttStatus === 'queued' || a.sttStatus === 'running')
+  // Checks left after a transcription that goes on to the minutes is in: the
+  // text and the minutes' start come a moment after it.
+  const [settling, setSettling] = useState(0)
   const shown = useRef<Meeting | null>(null)
   shown.current = m
   useEffect(() => {
-    if (!transcribing || processing) return
+    if ((!transcribing && !settling) || processing) return
     const t = setInterval(() => {
-      teamApi.meeting(team.id, id).then(
-        // The text changes when the transcription goes straight on to the minutes.
-        (x) => (x.status !== shown.current?.status || x.transcript !== shown.current?.transcript ? take(x) : setM(x)),
-        () => {},
-      )
+      teamApi.meeting(team.id, id).then((x) => {
+        const cur = shown.current
+        if (x.status !== cur?.status || x.transcript !== cur?.transcript) {
+          setSettling(0)
+          take(x)
+          return
+        }
+        const waiting = new Set(cur?.audio.filter((a) => a.sttThenMinutes && (a.sttStatus === 'queued' || a.sttStatus === 'running')).map((a) => a.id))
+        setSettling((n) => (x.audio.some((a) => waiting.has(a.id) && a.sttStatus === 'done') ? 5 : Math.max(0, n - 1)))
+        setM(x)
+      }, () => {})
     }, 3000)
     return () => clearInterval(t)
-  }, [transcribing, processing, team.id, id, take])
+  }, [transcribing, settling, processing, team.id, id, take])
 
   // What is heard goes into the meeting's text as it comes, and is saved every half minute.
   useEffect(() => {
@@ -323,6 +332,8 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
   if (!m) return <div className="p-2 text-sm text-muted">{error ?? '불러오는 중…'}</div>
 
   const editable = m.canEdit
+  const pending = m.audio.find((a) => a.sttStatus === 'queued' || a.sttStatus === 'running')
+  const fromRecording = m.audio.some((a) => a.sttThenMinutes)
   const minutes = fromForm(form)
   const tasks = fromRows(rows)
   const dirty =
@@ -369,7 +380,9 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
       await teamApi.deleteMeeting(team.id, m.id)
       onBack()
     })
-  const stopRecording = (thenSummarize: boolean) =>
+  // Ending the recording turns it into text (on the Mac mini, by speaker), then
+  // the AI suggests the minutes and tasks for the lead to look over.
+  const stopRecording = () =>
     act(async () => {
       const r = await rec.stop()
       const text = withCaptions(base.current, r.lines)
@@ -379,19 +392,16 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
       // On the Mac mini the recording is written down again, carefully and by speaker.
       if (m.canTranscribe && r.audio && r.audio.bytes > 0) {
         try {
-          const a = await teamApi.transcribeAudio(team.id, m.id, r.audio.id, { thenMinutes: thenSummarize })
+          const a = await teamApi.transcribeAudio(team.id, m.id, r.audio.id, { thenMinutes: true })
           setM({ ...x, audio: x.audio.map((y) => (y.id === a.id ? a : y)) })
           setTranscript(x.transcript ?? '')
-          setNotice(
-            `녹음${length}을 저장했어요.${cut} Mac mini에서 화자를 나눠 다시 받아쓰고 있어요(${eta(r.audio.durationSec)}).` +
-              (thenSummarize ? ' 끝나면 그 내용으로 AI가 회의록을 정리해요.' : ' 끝나면 누가 누구인지 정해 회의 내용으로 넣을 수 있어요.'),
-          )
+          setNotice(`녹음${length}을 저장했어요.${cut}`)
           return
         } catch {
           // Not now (the Mac mini is off, say): go on with the captions.
         }
       }
-      if (thenSummarize && text.trim()) {
+      if (text.trim()) {
         x = await teamApi.writeMinutes(team.id, m.id)
         take(x)
       } else {
@@ -399,11 +409,7 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
         setM(x)
         setTranscript(x.transcript ?? '')
       }
-      setNotice(
-        r.lines.length
-          ? `녹음${length}과 자막을 저장했어요.${cut}${thenSummarize ? '' : ' 자막을 고친 뒤 AI로 회의록을 정리할 수 있어요.'}`
-          : `녹음${length}을 저장했어요.${cut} 자막이 없어서 회의 내용은 직접 적어야 해요.`,
-      )
+      setNotice(r.lines.length ? `녹음${length}과 자막을 저장했어요.${cut}` : `녹음${length}을 저장했어요.${cut} 알아들은 말이 없어서 회의 내용은 직접 적어야 해요.`)
     })
   const removeAudio = (audioId: string) =>
     act(async () => {
@@ -436,11 +442,30 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
           <span>{m.createdByName || '알 수 없음'} 님이 만듦</span>
           {m.confirmedAt && <span>· {m.confirmedByName || '알 수 없음'} 님이 확정</span>}
         </p>
-        {processing && (
-          <div role="status" className="flex items-center gap-2.5 rounded-xl bg-ai-soft px-3.5 py-3 text-sm text-ai-ink">
+        {pending && !processing && (
+          <div role="status" aria-label="회의 정리 단계" className="flex items-center gap-2.5 rounded-xl bg-ai-soft px-3.5 py-3 text-sm text-ai-ink">
             <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-ai border-t-transparent" />
-            AI가 회의록을 정리하고 있어요{m.aiParts > 1 ? ` · ${m.aiDone}/${m.aiParts}단계` : ''}. 로컬 AI는 몇 분 걸릴 수 있어요. 이 화면을 떠나도 계속되고, 끝나면 알림을 보내요.
+            <span>
+              {pending.sttThenMinutes && <b className="font-semibold">1/2 · </b>}
+              녹음을 텍스트로 받아쓰고 있어요({pending.sttStatus === 'queued' ? '차례를 기다리는 중' : (STAGE[pending.sttStage] ?? '받아쓰는 중')}, {eta(pending.durationSec)}).
+              {pending.sttThenMinutes && ' 끝나면 AI가 회의록과 할 일을 제안해요.'} 이 화면을 떠나도 계속돼요.
+            </span>
           </div>
+        )}
+        {processing && (
+          <div role="status" aria-label="회의 정리 단계" className="flex items-center gap-2.5 rounded-xl bg-ai-soft px-3.5 py-3 text-sm text-ai-ink">
+            <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-ai border-t-transparent" />
+            <span>
+              {fromRecording && <b className="font-semibold">2/2 · </b>}
+              AI가 회의록과 할 일을 정리하고 있어요{m.aiParts > 1 ? ` · ${m.aiDone}/${m.aiParts}단계` : ''}. 로컬 AI는 몇 분 걸릴 수 있어요. 이 화면을 떠나도 계속되고, 끝나면 알림을 보내요.
+            </span>
+          </div>
+        )}
+        {m.minutes && m.status === 'ready' && !processing && (editable || m.canConfirm) && (
+          <p className="rounded-xl border border-ai/30 px-3.5 py-3 text-sm text-ink-2">
+            <b className="font-semibold text-ink">AI가 제안한 회의록과 할 일이에요.</b> 내용을 확인해 고칠 곳을 고치고, 할 일마다 담당자와 마감일을 정한 뒤{' '}
+            {m.canConfirm ? '확정해 주세요' : '매니저에게 확정을 부탁해 주세요'}. 담당자는 회의에서 맡겠다고 하거나 지목된 사람만 미리 넣었어요.
+          </p>
         )}
         {m.aiError && !processing && <AIError error={m.aiError} />}
       </div>
@@ -457,7 +482,12 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
                   <Mic size={14} /> 회의 녹음
                 </button>
               )}
-              <button className={`${aiOutlineButton} h-9 text-xs`} disabled={busy || !transcript.trim()} onClick={() => (m.minutes ? setAsking('rewrite') : void rewrite())}>
+              <button
+                className={`${aiOutlineButton} h-9 text-xs`}
+                disabled={busy || !transcript.trim() || !!pending}
+                title={pending ? '녹음을 받아쓰고 있어요. 끝나면 정리할 수 있어요' : undefined}
+                onClick={() => (m.minutes ? setAsking('rewrite') : void rewrite())}
+              >
                 <Sparkle size={13} /> {m.minutes ? 'AI로 다시 정리' : 'AI로 회의록 정리'}
               </button>
             </span>
@@ -471,14 +501,9 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
               <span className="text-sm font-semibold text-ink">{rec.state === 'starting' ? '마이크 준비 중…' : rec.state === 'stopping' ? '녹음 저장 중…' : '녹음 중'}</span>
               <span className="font-mono text-sm text-ink-2">{clock(rec.elapsed)}</span>
               {rec.unsent > 1 && <span className="text-xs text-muted">보낼 조각 {rec.unsent}개</span>}
-              <span className="ml-auto flex gap-2">
-                <button className={`${secondaryButton} h-9 text-xs`} disabled={rec.state !== 'recording'} onClick={() => void stopRecording(false)}>
-                  녹음 끝내기
-                </button>
-                <button className={`${aiButton} h-9 text-xs`} disabled={rec.state !== 'recording'} onClick={() => void stopRecording(true)}>
-                  <Sparkle size={13} /> 끝내고 AI로 정리
-                </button>
-              </span>
+              <button className={`${primaryButton} ml-auto h-9 text-xs`} disabled={rec.state !== 'recording'} onClick={() => void stopRecording()}>
+                회의 녹음 종료
+              </button>
             </div>
             {captionsSupported() ? (
               <div aria-label="실시간 자막" aria-live="polite" className="flex max-h-48 flex-col-reverse overflow-y-auto rounded-lg bg-surface px-3 py-2 text-sm leading-relaxed">
@@ -496,7 +521,9 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
               <p className="text-xs text-muted">이 브라우저는 실시간 자막을 지원하지 않아요(Chrome·Edge·Safari에서 돼요). 녹음은 저장돼요.</p>
             )}
             {rec.captionError && <p className="text-xs text-danger">{rec.captionError}</p>}
-            <p className="text-xs text-muted">자막은 브라우저 음성 인식이라 틀릴 수 있어요. 녹음이 끝나면 고칠 수 있고, 녹음 파일도 함께 저장돼요.</p>
+            <p className="text-xs text-muted">
+              회의 녹음을 종료하면 녹음을 텍스트로 받아쓴 뒤, AI가 회의록과 할 일을 제안해요. 확인하고 고쳐서 담당자를 정하면 돼요.
+            </p>
           </div>
         )}
         {asking === 'rewrite' && (
@@ -631,7 +658,10 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
         <section aria-label="할 일" className={`${card} flex flex-col gap-3 p-4 md:p-5`}>
           <div className="flex items-center justify-between gap-2">
             <h3 className="text-[15px] font-semibold">
-              할 일 <span className="text-xs font-normal text-muted">{tasks.length}개</span>
+              {m.status === 'confirmed' ? '할 일' : '제안된 할 일'}{' '}
+              <span className="text-xs font-normal text-muted">
+                {tasks.length}개{m.status !== 'confirmed' && unassigned > 0 ? ` · 담당자 없음 ${unassigned}개` : ''}
+              </span>
             </h3>
             {m.status === 'confirmed' && <span className="text-xs text-muted">팀 업무 탭에서 진행 상황을 볼 수 있어요</span>}
           </div>

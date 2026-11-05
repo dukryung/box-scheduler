@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // Minuter writes meeting minutes and finds the tasks in what was said. A long
@@ -59,28 +60,26 @@ const meetingSystemPrompt = `You write the minutes of a team meeting, in Korean.
 - summary: 2 to 4 sentences: what the meeting was about and what came of it.
 - decisions: each thing that was agreed or decided about the plan (a date, a choice, who leads something), as one short sentence. [] when nothing was decided. Work someone will do is a task, not a decision.
 - topics: the subjects discussed, in order: a short title and 1 to 5 points each. Points are short and concrete (numbers, dates, names, reasons).
-- tasks: work someone has to do after the meeting: a person said they will do it, or was asked to and agreed. For each task:
-  - title: the work in a few words, the way a to-do is written ("고객사 제안서 초안 작성"), without the person's name.
-  - assignee: who will do it, written exactly as in the member list; "" when no one was named or they are not in the list.
-  - dueDate: YYYY-MM-DD when a deadline was said, worked out from the meeting date with the calendar given ("다음 주 금요일", "내일", "이번 달 말"); "" when none was said.
+- tasks: the work to be done after the meeting, for the team lead to look over and assign: work a person took on or was asked to do, and each feature, change or job the meeting means to make: planned, proposed, or brought up to work out how ("~기능을 추가하려고 합니다", "~를 어떻게 개발할지 논의해 보고자 해요", "~를 고쳐야 해요", "~를 만들어 두면 좋겠네요"): the work itself is the task. For each task:
+  - title: the work in a few words, the way a to-do is written ("박스 스케줄러 녹음 기능 추가", "고객사 제안서 초안 작성"), starting with the project or product when the meeting names one; without the person's name. For work brought up to discuss, the title is the work itself ("sweep 프로젝트 녹음 기능 추가"), not the talk about it ("~ 논의", "~ 검토", "~ 방향"). When one sentence brings up several features, each is its own task.
+  - assignee: only when the transcript says who will do it: they said so themselves ("제가 ~할게요", a line of theirs) or were named for it ("~는 서준 님이 맡아 주세요") and did not refuse. Write them exactly as in the member list. Otherwise "": never pick someone because they brought the work up, ran the meeting or are in the member list.
+  - dueDate: YYYY-MM-DD only when a deadline was said for this work, worked out from the meeting date with the calendar given ("다음 주 금요일", "내일", "이번 달 말"); "" when none was said. Never make one up.
   - note: one sentence of detail that helps do it, or "".
   - evidence: the words of the transcript where the task comes up, copied exactly (one sentence, up to 100 characters).
-  Every "제가 ~할게요 / ~하겠습니다 / ~해 둘게요", and every request someone agreed to, is a task, even when it is also in decisions or topics.
-  Not tasks: ideas and wishes ("~하면 좋을 것 같아요", "나중에", "다음 버전에서"), questions nobody took on, and work already done ("~끝냈어요", "~했어요").
-  One task per piece of work: if the same work comes up twice, list it once.
-- Use only what is in the text: never invent names, numbers, dates or tasks. Leave out small talk and fillers ("음", "어", "그러니까").
+  One task per piece of work: if the same work comes up twice, list it once. It can also be in decisions or topics.
+  Not tasks: work already done ("~끝냈어요", "~했어요"), work put off on purpose ("나중에", "다음 버전에서", "다음에 다시 이야기해요"), a decision already made ("출시는 24일로 확정"), questions and remarks that ask no one to do anything (opinions, agreeing, how a number was counted, whether the screen share works), small talk (lunch) and running the meeting itself ("회의 시작하겠습니다"). Most of a meeting is talk around a few pieces of work: a part with no work in it has "tasks": [].
+- Use only what is in the text: never invent names, numbers or dates. Leave out small talk and fillers ("음", "어", "그러니까").
 Write plain text in every field; no markdown.
 
 Example (members: 김민지, 박서준; meeting on 2026-05-12 화):
-김민지: 다음 주 화요일 고객 미팅 전에 제안서 초안이 있어야 해요.
+김민지: 다음 주 화요일 고객 미팅 전에 제안서 초안이 있어야 해요. 그리고 앱에 다크 모드를 넣으려고 하는데, 어떻게 만들지 같이 얘기해 봐요.
 박서준: 제가 목요일까지 초안 쓸게요. 가격표는 민지 님이 봐 주실 수 있어요?
-김민지: 네, 가격표는 금요일까지 정리할게요. 그리고 발표는 서준 님이 하는 걸로 하죠.
-→ {"summary":"다음 주 화요일 고객 미팅을 위해 제안서와 가격표를 준비하기로 했어요. 발표는 박서준이 맡아요.","decisions":["고객 미팅 발표는 박서준이 맡는다"],"topics":[{"title":"고객 미팅 준비","points":["미팅은 다음 주 화요일(5/19)","미팅 전에 제안서 초안이 필요하다"]}],"tasks":[{"title":"제안서 초안 작성","assignee":"박서준","dueDate":"2026-05-14","note":"","evidence":"제가 목요일까지 초안 쓸게요."},{"title":"가격표 정리","assignee":"김민지","dueDate":"2026-05-15","note":"","evidence":"네, 가격표는 금요일까지 정리할게요."}]}`
+김민지: 네, 가격표는 금요일까지 정리할게요.
+→ {"summary":"다음 주 화요일 고객 미팅을 위해 제안서와 가격표를 준비하기로 했어요. 앱 다크 모드 추가도 논의했어요.","decisions":[],"topics":[{"title":"고객 미팅 준비","points":["미팅은 다음 주 화요일(5/19)","미팅 전에 제안서 초안이 필요하다"]},{"title":"다크 모드","points":["앱에 다크 모드를 넣을 계획"]}],"tasks":[{"title":"고객 미팅 제안서 초안 작성","assignee":"박서준","dueDate":"2026-05-14","note":"","evidence":"제가 목요일까지 초안 쓸게요."},{"title":"제안서 가격표 정리","assignee":"김민지","dueDate":"2026-05-15","note":"","evidence":"네, 가격표는 금요일까지 정리할게요."},{"title":"앱 다크 모드 추가","assignee":"","dueDate":"","note":"어떻게 만들지 정해야 해요","evidence":"그리고 앱에 다크 모드를 넣으려고 하는데, 어떻게 만들지 같이 얘기해 봐요."}]}`
 
-const mergeSystemPrompt = `A long team meeting was written up part by part. You get each part's minutes, in order. Merge them into the minutes of the whole meeting, in Korean.
+const mergeSystemPrompt = `A long team meeting was written up part by part. You get each part's summary and decisions, in order. Write the whole meeting's summary and decisions, in Korean.
 - summary: 2 to 5 sentences for the whole meeting: what it was about and what came of it.
 - decisions: every decision from the parts, once each (merge ones that say the same thing; a later part can change an earlier decision: keep the later one).
-- topics: the subjects in the order they came up; merge parts that continue the same subject; 1 to 6 points each.
 - Keep the concrete details (numbers, dates, names). Do not add anything that is not in the parts.
 Write plain text in every field; no markdown.`
 
@@ -103,9 +102,12 @@ func minutesProps() orderedProps {
 }
 
 var mergeSchema = map[string]any{
-	"type":                 "object",
-	"properties":           minutesProps(),
-	"required":             []string{"summary", "decisions", "topics"},
+	"type": "object",
+	"properties": orderedProps{
+		{"summary", map[string]any{"type": "string"}},
+		{"decisions", map[string]any{"type": "array", "items": map[string]any{"type": "string"}}},
+	},
+	"required":             []string{"summary", "decisions"},
 	"additionalProperties": false,
 }
 
@@ -173,29 +175,46 @@ func mergePrompt(r MergeRequest) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Meeting: %s (%s)\n", r.Title, r.HeldOn)
 	for i, p := range r.Parts {
-		fmt.Fprintf(&b, "\n[Part %d]\nSummary: %s\n", i+1, p.Summary)
-		for _, d := range p.Decisions {
-			fmt.Fprintf(&b, "Decision: %s\n", d)
-		}
-		for _, t := range p.Topics {
-			fmt.Fprintf(&b, "Topic: %s\n", t.Title)
-			for _, x := range t.Points {
-				fmt.Fprintf(&b, "  - %s\n", x)
-			}
-		}
+		writeMergePart(&b, i+1, p)
 	}
 	return b.String()
 }
 
+func writeMergePart(b *strings.Builder, n int, p MeetingMinutes) {
+	fmt.Fprintf(b, "\n[Part %d]\nSummary: %s\n", n, p.Summary)
+	for _, d := range p.Decisions {
+		fmt.Fprintf(b, "Decision: %s\n", d)
+	}
+}
+
+// MergeRunes is how much of a merge prompt a part's minutes take, in runes:
+// its summary and decisions.
+func MergeRunes(p MeetingMinutes) int {
+	var b strings.Builder
+	writeMergePart(&b, 1, p)
+	return utf8.RuneCountInString(b.String())
+}
+
+// How long a local model's answers may run, in tokens: a part's minutes and
+// tasks, and a merge's summary and decisions. Either is well under this; a
+// small model answers about 10 tokens a second, so an answer that runs on is
+// cut off before the call's 3 minutes are up, and tried again.
+const (
+	meetingPartTokens  = 1400
+	meetingMergeTokens = 800
+)
+
 func (p claudeProvider) MeetingPart(ctx context.Context, req MeetingRequest) (MeetingPart, error) {
 	var out MeetingPart
-	err := p.c.call(ctx, meetingSystemPrompt, meetingPrompt(req), meetingSchema, &out)
+	err := p.c.call(withMaxTokens(ctx, meetingPartTokens), meetingSystemPrompt, meetingPrompt(req), meetingSchema, &out)
 	return out, err
 }
 
+// MergeMinutes writes the whole meeting's summary and decisions from the parts';
+// the topics are the parts' own, joined by the caller.
 func (p claudeProvider) MergeMinutes(ctx context.Context, req MergeRequest) (MeetingMinutes, error) {
 	var out MeetingMinutes
-	err := p.c.call(ctx, mergeSystemPrompt, mergePrompt(req), mergeSchema, &out)
+	err := p.c.call(withMaxTokens(ctx, meetingMergeTokens), mergeSystemPrompt, mergePrompt(req), mergeSchema, &out)
 	return out, err
 }
 
@@ -211,13 +230,15 @@ var fakePartTime = 500 * time.Millisecond
 
 var (
 	fakeSpeaker  = regexp.MustCompile(`^\s*([^:：]{1,20})[:：]\s*(.+)$`)
-	fakePromise  = regexp.MustCompile(`(할게요|하겠습니다|해 주세요|해주세요)`)
+	fakePromise  = regexp.MustCompile(`(할게요|하겠습니다|해 주세요|해주세요|추가하려고 해요)`)
 	fakeDeadline = regexp.MustCompile(`(\d{1,2})/(\d{1,2})까지`)
 )
 
 // MeetingPart (fake) reads "이름: 말" lines: the first line is the summary, a
-// line with 결정 is a decision, and a line that promises or asks for work is a
-// task for its speaker, due on "M/D까지" when it says so. Each part takes half
+// line with 결정 is a decision, and a line that promises, asks for or plans
+// work is a task: for its speaker when they promise it, for the member it names
+// when it asks ("서준 님 ~해 주세요"), else for no one; due on "M/D까지" when
+// it says so. Each part takes half
 // a second, as a model would take a while, so tests can see the work running.
 func (Fake) MeetingPart(ctx context.Context, req MeetingRequest) (MeetingPart, error) {
 	select {
@@ -248,8 +269,15 @@ func (Fake) MeetingPart(ctx context.Context, req MeetingRequest) (MeetingPart, e
 			out.Decisions = append(out.Decisions, said)
 		case fakePromise.MatchString(said):
 			t := MeetingTask{Title: strings.TrimSpace(fakePromise.Split(said, 2)[0]), Evidence: said}
-			if members[who] {
+			switch verb := fakePromise.FindString(said); {
+			case (verb == "할게요" || verb == "하겠습니다") && members[who]:
 				t.Assignee = who
+			case strings.HasPrefix(verb, "해"):
+				for _, name := range req.Members {
+					if strings.Contains(said, name) {
+						t.Assignee = name
+					}
+				}
 			}
 			if m := fakeDeadline.FindStringSubmatch(said); m != nil {
 				var mo, day int

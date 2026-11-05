@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -31,7 +32,12 @@ const (
 	// A small local model reads about 4,000 tokens at once, prompt and answer
 	// together; 1,800 Korean characters are about 1,300 of them.
 	meetingPartRunes = 1800
-	meetingAITime    = 40 * time.Minute
+	// The parts' minutes are merged a few at a time, so that what one merge
+	// reads (about 2,200 tokens) leaves room for its answer; the merged
+	// minutes are merged again until one is left.
+	mergeRunes     = 3000
+	mergeMostParts = 4 // parts one merge takes at most, when estimating the steps
+	meetingAITime  = 40 * time.Minute
 )
 
 func canEditMeeting(role, userID string, m store.Meeting) bool {
@@ -109,7 +115,7 @@ func cleanMinutes(m store.Minutes) store.Minutes {
 	out := store.Minutes{Summary: clip(m.Summary, 2000), Decisions: cleanLines(m.Decisions, 30, 300), Topics: []store.MinutesTopic{}}
 	for _, t := range m.Topics {
 		t := store.MinutesTopic{Title: clip(t.Title, 120), Points: cleanLines(t.Points, 12, 300)}
-		if (t.Title != "" || len(t.Points) > 0) && len(out.Topics) < 30 {
+		if (t.Title != "" || len(t.Points) > 0) && len(out.Topics) < 60 {
 			out.Topics = append(out.Topics, t)
 		}
 	}
@@ -279,6 +285,10 @@ func (a *API) startMinutes(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "회의를 만든 사람과 매니저만 AI로 정리할 수 있어요")
 		return
 	}
+	if transcribing(cur) {
+		writeError(w, http.StatusConflict, "녹음을 받아쓰고 있어요. 끝나면 그 내용으로 회의록을 정리할 수 있어요")
+		return
+	}
 	if strings.TrimSpace(cur.Transcript) == "" {
 		writeError(w, http.StatusBadRequest, "회의 내용을 먼저 넣어 주세요")
 		return
@@ -307,10 +317,7 @@ func (a *API) startMinutes(w http.ResponseWriter, r *http.Request) {
 // beginMinutes marks the meeting as being written up and starts the work.
 func (a *API) beginMinutes(ctx context.Context, userID, teamID string, m store.Meeting, members []store.TeamMember, p ai.Provider) error {
 	parts := splitTranscript(m.Transcript, meetingPartRunes)
-	steps := len(parts)
-	if steps > 1 {
-		steps++ // merging the parts' minutes
-	}
+	steps := len(parts) + mergeSteps(len(parts))
 	if err := a.store.StartMeetingAI(ctx, teamID, m.ID, steps); err != nil {
 		return err
 	}
@@ -347,7 +354,7 @@ func (a *API) writeMinutes(userID, teamID string, m store.Meeting, members []sto
 	results := make([]ai.MeetingPart, 0, len(parts))
 	for i, text := range parts {
 		req := ai.MeetingRequest{Title: m.Title, HeldOn: m.HeldOn, Members: names, Part: i + 1, Parts: len(parts), Text: text}
-		part, err := retryAI(ctx, func() (ai.MeetingPart, error) { return p.MeetingPart(ctx, req) })
+		part, err := retryAI(ctx, func(ctx context.Context) (ai.MeetingPart, error) { return p.MeetingPart(ctx, req) })
 		if err != nil {
 			fail(err)
 			return
@@ -355,21 +362,21 @@ func (a *API) writeMinutes(userID, teamID string, m store.Meeting, members []sto
 		results = append(results, part)
 		_ = a.store.MeetingAIProgress(ctx, m.ID, i+1)
 	}
-	minutes := results[0].MeetingMinutes
-	if len(results) > 1 {
-		req := ai.MergeRequest{Title: m.Title, HeldOn: m.HeldOn}
-		for _, x := range results {
-			req.Parts = append(req.Parts, x.MeetingMinutes)
-		}
-		merged, err := retryAI(ctx, func() (ai.MeetingMinutes, error) { return p.MergeMinutes(ctx, req) })
-		if err != nil {
-			fail(err)
-			return
-		}
-		minutes = merged
+	done, steps := len(parts), len(parts)+mergeSteps(len(parts))
+	partMinutes := make([]ai.MeetingMinutes, len(results))
+	for i, x := range results {
+		partMinutes[i] = x.MeetingMinutes
+	}
+	minutes, err := mergeMinutes(ctx, p, m.Title, m.HeldOn, partMinutes, func() {
+		done = min(done+1, steps-1) // the estimate can fall short; the save finishes it
+		_ = a.store.MeetingAIProgress(ctx, m.ID, done)
+	})
+	if err != nil {
+		fail(err)
+		return
 	}
 	saved := cleanMinutes(store.Minutes{Summary: minutes.Summary, Decisions: minutes.Decisions, Topics: topicsOf(minutes.Topics)})
-	tasks := foundTasks(results, members, m.Transcript)
+	tasks := foundTasks(results, members, m.Transcript, m.HeldOn)
 	if err := a.store.FinishMeetingAI(ctx, teamID, m.ID, saved, tasks); err != nil {
 		slog.Error("save minutes", "meeting", m.ID, "err", err)
 		return
@@ -388,16 +395,103 @@ func (a *API) notifyMinutes(ctx context.Context, userID, teamID string, m store.
 }
 
 // retryAI tries again when the queue was full or a small model's answer did
-// not come out right; a third failure is final.
-func retryAI[T any](ctx context.Context, fn func() (T, error)) (T, error) {
+// not come out right; a third failure is final. The first try asks for the
+// model's steadiest answer.
+func retryAI[T any](ctx context.Context, fn func(context.Context) (T, error)) (T, error) {
 	var out T
 	var err error
 	for try := 0; try < 3; try++ {
-		if out, err = fn(); err == nil || errors.Is(err, ai.ErrNotConfigured) || ctx.Err() != nil {
+		c := ctx
+		if try == 0 {
+			c = ai.Steady(ctx)
+		}
+		if out, err = fn(c); err == nil || errors.Is(err, ai.ErrNotConfigured) || ctx.Err() != nil {
 			return out, err
 		}
 	}
 	return out, err
+}
+
+// mergeMinutes merges the parts' minutes into the whole meeting's. The model
+// writes the summary and decisions, a few parts at a time, in order, then from
+// those merges again, until one is left; the topics are the parts' own, joined
+// here, so none is lost and the model has less to write.
+func mergeMinutes(ctx context.Context, p ai.Minuter, title, heldOn string, parts []ai.MeetingMinutes, merged func()) (ai.MeetingMinutes, error) {
+	topics := joinTopics(parts)
+	for len(parts) > 1 {
+		next := []ai.MeetingMinutes{}
+		for _, group := range mergeGroups(parts, mergeRunes) {
+			if len(group) == 1 {
+				next = append(next, group[0])
+				continue
+			}
+			req := ai.MergeRequest{Title: title, HeldOn: heldOn, Parts: group}
+			out, err := retryAI(ctx, func(ctx context.Context) (ai.MeetingMinutes, error) { return p.MergeMinutes(ctx, req) })
+			if err != nil {
+				return ai.MeetingMinutes{}, err
+			}
+			next = append(next, out)
+			merged()
+		}
+		parts = next
+	}
+	out := parts[0]
+	out.Topics = topics
+	return out, nil
+}
+
+// joinTopics lists the parts' topics in order, the same subject once: a topic
+// that goes on into the next part, or comes back later, gets its points added
+// to the first.
+func joinTopics(parts []ai.MeetingMinutes) []ai.MeetingTopic {
+	out := []ai.MeetingTopic{}
+	for _, p := range parts {
+		for _, t := range p.Topics {
+			i := slices.IndexFunc(out, func(x ai.MeetingTopic) bool { return sameWork(x.Title, t.Title) })
+			if i < 0 {
+				out = append(out, ai.MeetingTopic{Title: t.Title, Points: []string{}})
+				i = len(out) - 1
+			}
+			for _, x := range t.Points {
+				if !slices.ContainsFunc(out[i].Points, func(y string) bool { return squash(y) == squash(x) }) {
+					out[i].Points = append(out[i].Points, x)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// mergeGroups cuts the parts, in order, into groups that fit in a merge of
+// budget runes. A group holds two parts at least, so each round merges.
+func mergeGroups(parts []ai.MeetingMinutes, budget int) [][]ai.MeetingMinutes {
+	groups := [][]ai.MeetingMinutes{}
+	var cur []ai.MeetingMinutes
+	n := 0
+	for _, x := range parts {
+		size := ai.MergeRunes(x)
+		if len(cur) >= 2 && n+size > budget {
+			groups = append(groups, cur)
+			cur, n = nil, 0
+		}
+		cur = append(cur, x)
+		n += size
+	}
+	if len(cur) > 0 {
+		groups = append(groups, cur) // a part left over alone waits for the next round
+	}
+	return groups
+}
+
+// mergeSteps estimates how many merges n parts take, for the progress shown.
+func mergeSteps(n int) int {
+	steps := 0
+	for n > 1 {
+		groups := (n + mergeMostParts - 1) / mergeMostParts
+		steps += groups
+		n = groups
+	}
+	return steps
 }
 
 func topicsOf(in []ai.MeetingTopic) []store.MinutesTopic {
@@ -451,43 +545,225 @@ func splitTranscript(text string, size int) []string {
 }
 
 // foundTasks gathers the parts' tasks: the same work named twice is kept once,
-// assignees are matched to the team's people, and evidence the transcript does
-// not have (made up) is dropped.
-func foundTasks(parts []ai.MeetingPart, members []store.TeamMember, transcript string) []store.MeetingTask {
+// evidence the transcript does not have (made up) is dropped, and so are an
+// assignee and a deadline the evidence does not bear out: a task goes to
+// someone only when they took it on or were named for it, and is due only when
+// a time was said.
+func foundTasks(parts []ai.MeetingPart, members []store.TeamMember, transcript, heldOn string) []store.MeetingTask {
 	said := squash(transcript)
+	lines := strings.Split(transcript, "\n")
 	out := []store.MeetingTask{}
-	seen := map[string]int{}
 	for _, p := range parts {
 		for _, t := range p.Tasks {
 			title := clip(t.Title, 200)
 			if title == "" {
 				continue
 			}
-			x := store.MeetingTask{Title: title, Note: clip(t.Note, 1000), AssigneeID: matchMember(t.Assignee, members)}
+			x := store.MeetingTask{Title: title, Note: clip(t.Note, 1000)}
 			if ev := clip(strings.Trim(t.Evidence, `"'“”‘’`), 500); ev != "" && strings.Contains(said, squash(strings.TrimRight(ev, ".?!。"))) {
+				if noWork(ev) {
+					continue
+				}
 				x.Evidence = ev
+				if id := matchMember(t.Assignee, members); id != "" && tookOn(evidenceLine(lines, ev), ev, memberByID(members, id), members) {
+					x.AssigneeID = id
+				}
+				x.DueDate = taskDue(ev, strings.TrimSpace(t.DueDate), heldOn)
 			}
-			if d := strings.TrimSpace(t.DueDate); isDate(d) {
-				x.DueDate = &d
-			}
-			key := squash(title)
-			if i, ok := seen[key]; ok {
+			if i := slices.IndexFunc(out, func(y store.MeetingTask) bool { return sameTask(y, x) }); i >= 0 {
 				if out[i].AssigneeID == "" {
 					out[i].AssigneeID = x.AssigneeID
 				}
 				if out[i].DueDate == nil {
 					out[i].DueDate = x.DueDate
 				}
+				if out[i].Note == "" {
+					out[i].Note = x.Note
+				}
+				if out[i].Evidence == "" {
+					out[i].Evidence = x.Evidence
+				}
 				continue
 			}
 			if len(out) == maxMeetingTasks {
 				return out
 			}
-			seen[key] = len(out)
 			out = append(out, x)
 		}
 	}
 	return out
+}
+
+var (
+	// What is said of work already done, or put off on purpose.
+	doneWork = regexp.MustCompile(`끝났|끝냈|마쳤|완료(됐|했|되었)|반영(됐|되었|했)|해\s*놨|해\s*놓았|붙여\s*놨|다음\s*버전에서|나중에|다음에\s*다시`)
+	// A question that asks someone to do something ("~해 주실 수 있어요?").
+	askingFor = regexp.MustCompile(`주실\s*수|줄\s*수|주시겠|주시면|주세요|맡아\s*줄|해\s*볼래|할\s*수\s*있(을까|어)`)
+)
+
+// noWork tells whether the words a task came from show there is nothing to do:
+// the work is done or put off, or it was a question that asked no one for work
+// ("화면 공유가 잘 되고 있나요?"). A small model lists such lines as tasks when
+// a long meeting has a lot of talk.
+func noWork(evidence string) bool {
+	return doneWork.MatchString(evidence) || (strings.ContainsAny(evidence, "?？") && !askingFor.MatchString(evidence))
+}
+
+// sameTask tells whether two tasks are the same work: their titles say so, or
+// they are due the same day and share two words of what is done ("서버 비용
+// 정리", "서버 비용 절감 방안 정리"), as when the end of a meeting goes over
+// its work again.
+func sameTask(a, b store.MeetingTask) bool {
+	if sameWork(a.Title, b.Title) {
+		return true
+	}
+	if a.DueDate == nil || b.DueDate == nil || *a.DueDate != *b.DueDate {
+		return false
+	}
+	shared := 0
+	for _, w := range strings.Fields(a.Title) {
+		if utf8.RuneCountInString(w) >= 2 && !plainWord[w] && slices.Contains(strings.Fields(b.Title), w) {
+			shared++
+		}
+	}
+	return shared >= 2
+}
+
+// Words many task titles have, which say little of what the work is.
+var plainWord = map[string]bool{"기능": true, "작성": true, "정리": true, "수정": true, "추가": true, "개발": true, "진행": true, "검토": true, "준비": true, "논의": true, "확인": true, "방안": true}
+
+// Words a small model ends a title with, which leave the work the same: how
+// it was talked over ("~ 방안 논의") and the plain verbs of building something
+// ("~ 기능 추가", "~ 기능 개발").
+var workSuffix = regexp.MustCompile(`\s*(에\s*대한|에\s*대해|관련|방안|방향|방법|계획|논의|검토|협의|진행|작업|하기|추가|개발|구현|도입|적용)$`)
+
+// sameWork tells whether two task titles name the same work, as the parts of a
+// long meeting say it in their own words: "sweep 녹음 기능 추가" and "sweep 프로젝트
+// 녹음 기능 개발 방안 논의", or "결제 오류 수정" and "결제 오류 수정하기". A title
+// is the same work when the other only adds words inside it; a word changed
+// ("앱 다크 모드", "웹 다크 모드") or added at the end ("로그인 기능 테스트") is
+// other work.
+func sameWork(a, b string) bool {
+	a, b = workKey(a), workKey(b)
+	if a == "" || b == "" {
+		return false
+	}
+	if utf8.RuneCountInString(a) > utf8.RuneCountInString(b) {
+		a, b = b, a
+	}
+	return a == b || (utf8.RuneCountInString(a) >= 4 && inOrder(a, b) && lastRunes(a, 2) == lastRunes(b, 2) && dice(a, b) >= 0.5)
+}
+
+func workKey(title string) string {
+	t := strings.ToLower(strings.TrimSpace(title))
+	for {
+		cut := workSuffix.ReplaceAllString(t, "")
+		if cut == t || cut == "" {
+			break
+		}
+		t = cut
+	}
+	return squash(t)
+}
+
+// inOrder tells whether every letter of a is in b, in the same order.
+func inOrder(a, b string) bool {
+	rb := []rune(b)
+	j := 0
+	for _, r := range a {
+		for j < len(rb) && rb[j] != r {
+			j++
+		}
+		if j == len(rb) {
+			return false
+		}
+		j++
+	}
+	return true
+}
+
+func lastRunes(s string, n int) string {
+	rs := []rune(s)
+	return string(rs[max(0, len(rs)-n):])
+}
+
+// dice is how much of two strings' letter pairs they share, from 0 to 1.
+func dice(a, b string) float64 {
+	pairs := func(s string) map[string]int {
+		rs := []rune(s)
+		m := map[string]int{}
+		for i := 0; i+1 < len(rs); i++ {
+			m[string(rs[i:i+2])]++
+		}
+		return m
+	}
+	pa, pb := pairs(a), pairs(b)
+	total, shared := 0, 0
+	for k, n := range pa {
+		total += n
+		shared += min(n, pb[k])
+	}
+	for _, n := range pb {
+		total += n
+	}
+	if total == 0 {
+		return 0
+	}
+	return 2 * float64(shared) / float64(total)
+}
+
+var (
+	speakerLine = regexp.MustCompile(`^\s*([^:：]{1,20})[:：]\s*(.*)$`)
+	// What a person says when they take work on themselves.
+	firstPerson = regexp.MustCompile(`제가|저는|저도|저희가|내가|제 쪽|맡을게|맡겠|할게요|볼게요|드릴게요|둘게요|놓을게요|해 올게요`)
+)
+
+// evidenceLine is the transcript line the evidence was said in.
+func evidenceLine(lines []string, evidence string) string {
+	ev := squash(strings.TrimRight(evidence, ".?!。"))
+	for _, l := range lines {
+		if strings.Contains(squash(l), ev) {
+			return l
+		}
+	}
+	return ""
+}
+
+func memberByID(members []store.TeamMember, id string) store.TeamMember {
+	for _, m := range members {
+		if m.UserID == id {
+			return m
+		}
+	}
+	return store.TeamMember{}
+}
+
+// tookOn tells whether the line bears out that m does the work: m is named in
+// what was said ("가격표는 민지 님이 봐 주세요"), or m said it and took it on
+// ("민지: 네, 제가 정리할게요").
+func tookOn(line, evidence string, m store.TeamMember, members []store.TeamMember) bool {
+	if line == "" || m.UserID == "" {
+		return false
+	}
+	who, words := "", line
+	if x := speakerLine.FindStringSubmatch(line); x != nil {
+		who, words = x[1], x[2]
+	}
+	if namesMember(words, m) {
+		return true
+	}
+	return who != "" && matchMember(who, members) == m.UserID && firstPerson.MatchString(evidence)
+}
+
+// namesMember tells whether text names m: their whole name, or the given name of
+// a Korean name ("서준" for "박서준").
+func namesMember(text string, m store.TeamMember) bool {
+	text = squash(text)
+	full := []rune(squash(displayName(m.Name, m.Email)))
+	if len(full) >= 2 && strings.Contains(text, string(full)) {
+		return true
+	}
+	return len(full) == 3 && unicode.Is(unicode.Hangul, full[0]) && strings.Contains(text, string(full[1:]))
 }
 
 // squash drops spaces, so text compares the same however it was spaced.

@@ -98,6 +98,10 @@ func (a *API) transcribe(userID, teamID string, m store.Meeting, rec store.Meeti
 		if err := a.store.FailTranscribe(context.WithoutCancel(ctx), rec.ID, msg); err != nil {
 			slog.Error("save transcribe failure", "err", err)
 		}
+		// The minutes were waiting for it: they are written from the live captions instead.
+		if p != nil && a.minutesFromCaptions(context.WithoutCancel(ctx), userID, teamID, m.ID, members, p) == nil {
+			msg += ". 대신 실시간 자막으로 회의록을 정리하고 있어요"
+		}
 		a.notifyTeam(context.WithoutCancel(ctx), userID, store.Notification{Kind: "meeting", Title: fmt.Sprintf("‘%s’ 녹음을 받아쓰지 못했어요", m.Title), Body: msg, Link: link})
 	}
 
@@ -144,17 +148,45 @@ func (a *API) transcribe(userID, teamID string, m store.Meeting, rec store.Meeti
 	slog.Info("transcribed", "meeting", m.ID, "audio", rec.ID, "seconds", job.Duration, "segments", len(segments), "speakers", speakersFound, "elapsed", time.Since(started))
 
 	if p != nil {
-		if err := a.minutesFromTranscription(ctx, userID, teamID, m.ID, members, p); err == nil {
-			return // the minutes tell when they are done
-		} else {
-			slog.Warn("minutes after transcription", "meeting", m.ID, "err", err)
+		err := a.minutesFromTranscription(ctx, userID, teamID, m.ID, members, p)
+		if errors.Is(err, errNothingHeard) {
+			err = a.minutesFromCaptions(ctx, userID, teamID, m.ID, members, p)
 		}
+		if err == nil {
+			return // the minutes tell when they are done
+		}
+		slog.Warn("minutes after transcription", "meeting", m.ID, "err", err)
 	}
 	body := fmt.Sprintf("화자 %d명으로 나눠 적었어요. 누가 누구인지 정하고 회의 내용으로 넣어 주세요", speakersFound)
 	if len(segments) == 0 {
 		body = "녹음에서 알아들은 말이 없어요"
 	}
 	a.notifyTeam(context.WithoutCancel(ctx), userID, store.Notification{Kind: "meeting", Title: fmt.Sprintf("‘%s’ 녹음 받아쓰기가 끝났어요", m.Title), Body: body, Link: link})
+}
+
+var errNothingHeard = errors.New("nothing heard")
+
+// transcribing tells whether a recording of m is still being written down.
+func transcribing(m store.Meeting) bool {
+	for _, a := range m.Audio {
+		if a.SttStatus == "queued" || a.SttStatus == "running" {
+			return true
+		}
+	}
+	return false
+}
+
+// minutesFromCaptions has the AI write the minutes from the meeting's text as
+// it is (the live captions), when the transcription cannot be had.
+func (a *API) minutesFromCaptions(ctx context.Context, userID, teamID, meetingID string, members []store.TeamMember, p ai.Provider) error {
+	m, err := a.store.MeetingByID(ctx, teamID, meetingID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(m.Transcript) == "" || transcribing(m) {
+		return errNothingHeard
+	}
+	return a.beginMinutes(ctx, userID, teamID, m, members, p)
 }
 
 // minutesFromTranscription makes the transcriptions the meeting's text and has the AI write the minutes.
@@ -165,7 +197,7 @@ func (a *API) minutesFromTranscription(ctx context.Context, userID, teamID, meet
 	}
 	text := transcriptionText(m.Audio)
 	if text == "" {
-		return errors.New("nothing heard")
+		return errNothingHeard
 	}
 	if err := a.store.SetTranscript(ctx, teamID, m.ID, text); err != nil {
 		return err
