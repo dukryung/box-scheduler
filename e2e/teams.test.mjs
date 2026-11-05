@@ -87,7 +87,7 @@ try {
   await m.waitForURL('**/invite/**')
   await m.getByRole('button', { name: /팀에 참여하기/ }).click()
   await m.waitForURL(`**/team/${teamId}`)
-  await m.getByRole('tab', { name: /멤버/ }).click()
+  check((await m.getByRole('tab', { name: /멤버/ }).count()) === 0, 'members are not a tab'); await m.getByRole('button', { name: '팀 설정' }).click()
   await m.getByRole('region', { name: /멤버 2/ }).waitFor()
   check(true, 'joined after sign-up and sees the team')
   const minjiMe = (await m.evaluate(() => fetch('/api/auth/me').then((r) => r.json())))

@@ -171,15 +171,21 @@ try {
   await view.getByRole('button', { name: '저장' }).click()
   await view.waitFor({ state: 'detached' })
   check((await T(lead, 'GET')).body.tasks.find((t) => t.id === api.id).status === 'done', 'she marks it done from the editor')
-  check((await mp.getByRole('button', { name: '삭제' }).count()) === 0, 'no delete for her')
+  check((await mp.getByRole('button', { name: 'API 문서화 삭제' }).count()) === 0, 'no delete for her: no trash on a task she may not edit')
 
-  // 11. Delete with confirmation
+  // 11. Delete from the list, with confirmation; the editor has no delete
   await p.getByRole('button', { name: '목록' }).click()
-  await p.getByRole('listitem', { name: '배포 스크립트 정리' }).getByRole('button').first().click()
-  await p.getByRole('dialog').getByRole('button', { name: '삭제' }).click()
-  await p.getByRole('dialog').getByRole('button', { name: '지우기' }).click()
-  await p.getByRole('listitem', { name: '배포 스크립트 정리' }).waitFor({ state: 'detached' })
-  check((await T(lead, 'GET')).body.tasks.length === 3, 'deleted after confirming')
+  const row = p.getByRole('listitem', { name: '배포 스크립트 정리' })
+  await row.getByRole('button').first().click()
+  check((await p.getByRole('dialog', { name: '업무 편집' }).getByRole('button', { name: '삭제' }).count()) === 0, 'the editor has no delete button')
+  await p.getByRole('dialog', { name: '업무 편집' }).getByRole('button', { name: '닫기' }).click()
+  await row.getByRole('button', { name: '배포 스크립트 정리 삭제' }).click()
+  await row.getByRole('alertdialog', { name: '삭제 확인' }).getByRole('button', { name: '취소' }).click()
+  check((await row.getByRole('alertdialog').count()) === 0 && (await T(lead, 'GET')).body.tasks.length === 4, 'the trash asks first; 취소 keeps it')
+  await row.getByRole('button', { name: '배포 스크립트 정리 삭제' }).click()
+  await row.getByRole('button', { name: '지우기' }).click()
+  await row.waitFor({ state: 'detached' })
+  check((await T(lead, 'GET')).body.tasks.length === 3, 'deleted from the list after confirming')
 
   // 12. Phone: list only, nothing sideways
   const ph = await pageAs(lead, { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
@@ -187,9 +193,9 @@ try {
   await ph.getByRole('list', { name: '업무 목록' }).waitFor()
   check((await ph.getByRole('group', { name: '보기 방식' }).count()) === 0, 'phone: list only (no board switch)')
   check(await ph.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'phone: no sideways scroll')
-  await ph.getByRole('tab', { name: /멤버/ }).tap()
+  await ph.getByRole('button', { name: '팀 설정' }).tap()
   await ph.getByRole('region', { name: /멤버 3/ }).waitFor()
-  check(true, 'members tab still there')
+  check(true, 'phone: members open from 팀 설정')
 
   check(errors.filter((x) => !/40[034]/.test(x)).length === 0, `no console errors ${errors.join(' | ')}`)
 } finally {

@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { teamApi } from '../../api/client'
 import type { InviteResult, TeamDetail, TeamMember, TeamRole } from '../../api/types'
 import { ConfirmInline } from '../../components/ConfirmInline'
+import { Gear } from '../../components/icons'
 import { card, primaryButton, secondaryButton } from '../../components/styles'
 import { todayISO } from '../../lib/date'
 import { useAuth } from '../../store/authStore'
@@ -126,12 +127,13 @@ function MemberRow({ m, team, meId, onChanged }: { m: TeamMember; team: TeamDeta
   )
 }
 
-/** A team's home: its tasks, and members, email invites and (for the owner) settings. */
+/** A team's home: its tasks, month and meetings; its settings (members, email invites, and for the owner the team itself) open from the 설정 button. */
 export function TeamView() {
   const { teamId = '' } = useParams()
   const [params, setParams] = useSearchParams()
   const asked = params.get('tab')
-  const tab = params.get('invite') || asked === 'members' ? 'members' : asked === 'month' ? 'month' : asked === 'meetings' ? 'meetings' : 'tasks'
+  // "members" is what older links say for the settings.
+  const tab = params.get('invite') || asked === 'settings' || asked === 'members' ? 'members' : asked === 'month' ? 'month' : asked === 'meetings' ? 'meetings' : 'tasks'
   const navigate = useNavigate()
   const me = useAuth((s) => s.user)
   const reloadTeams = useTeams((s) => s.load)
@@ -211,26 +213,36 @@ export function TeamView() {
       </TopBar>
 
       <main className={`mx-auto flex w-full ${tab === 'members' ? 'max-w-[760px]' : tab === 'month' ? 'max-w-[1240px]' : 'max-w-[1080px]'} flex-col gap-3 px-4 pt-3 pb-[104px] md:gap-4 md:px-6 md:pt-6 md:pb-10`}>
-        <nav role="tablist" aria-label="팀 화면" className="flex gap-1 border-b border-line">
-          {(
-            [
-              ['tasks', '업무'],
-              ['month', '월간 일정'],
-              ['meetings', '회의'],
-              ['members', `멤버 ${team.memberList.length}`],
-            ] as const
-          ).map(([k, label]) => (
-            <button
-              key={k}
-              role="tab"
-              aria-selected={tab === k}
-              onClick={() => setParams(k === 'tasks' ? {} : { tab: k }, { replace: true })}
-              className={`-mb-px border-b-2 px-3 py-2 text-[15px] ${tab === k ? 'border-accent font-semibold text-ink' : 'border-transparent text-muted hover:text-ink'}`}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+        <div className="flex items-end gap-2 border-b border-line">
+          <nav role="tablist" aria-label="팀 화면" className="flex min-w-0 gap-1">
+            {(
+              [
+                ['tasks', '업무'],
+                ['month', '월간 일정'],
+                ['meetings', '회의'],
+              ] as const
+            ).map(([k, label]) => (
+              <button
+                key={k}
+                role="tab"
+                aria-selected={tab === k}
+                onClick={() => setParams(k === 'tasks' ? {} : { tab: k }, { replace: true })}
+                className={`-mb-px shrink-0 border-b-2 px-3 py-2 text-[15px] ${tab === k ? 'border-accent font-semibold text-ink' : 'border-transparent text-muted hover:text-ink'}`}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+          <button
+            type="button"
+            aria-label="팀 설정"
+            aria-current={tab === 'members' ? 'page' : undefined}
+            onClick={() => setParams({ tab: 'settings' }, { replace: true })}
+            className={`mb-1.5 ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] ${tab === 'members' ? 'bg-ink font-semibold text-surface' : 'text-ink-2 hover:bg-subtle hover:text-ink'}`}
+          >
+            <Gear size={15} /> 설정
+          </button>
+        </div>
 
         {tab === 'tasks' && <TeamTasks team={team} meId={me?.id ?? ''} />}
         {tab === 'month' && <TeamMonth team={team} meId={me?.id ?? ''} />}
@@ -354,7 +366,7 @@ export function TeamView() {
         )}
 
         {tab === 'members' && team.role === 'owner' && (
-          <Section title="팀 설정">
+          <Section title="팀 정보">
             <form
               className="flex gap-2"
               onSubmit={async (e) => {

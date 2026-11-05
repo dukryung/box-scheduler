@@ -234,10 +234,6 @@ export function TeamMonth({ team, meId }: { team: TeamDetail; meId: string }) {
             setEditing(null)
             void load()
           }}
-          onDeleted={() => {
-            setEditing(null)
-            void load()
-          }}
           onChanged={() => void load()}
         />
       )}

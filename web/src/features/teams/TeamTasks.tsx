@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { teamApi } from '../../api/client'
 import type { TeamDetail, TeamTask, TeamTaskInput, TeamTaskStatus } from '../../api/types'
 import { ConfirmInline } from '../../components/ConfirmInline'
-import { Close, Plus, Sparkle } from '../../components/icons'
+import { Close, Plus, Sparkle, Trash } from '../../components/icons'
 import { aiOutlineButton, card, doneStrike, primaryButton, secondaryButton } from '../../components/styles'
 import { todayISO } from '../../lib/date'
 import { formatDuration } from '../../lib/slots'
@@ -88,6 +88,7 @@ export function TeamTasks({ team, meId }: { team: TeamDetail; meId: string }) {
   const [view, setViewState] = useState(readView)
   const [editing, setEditing] = useState<TeamTask | 'new' | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
   const shownView = mobile ? 'list' : view
 
   const load = useCallback(async () => {
@@ -130,6 +131,40 @@ export function TeamTasks({ team, meId }: { team: TeamDetail; meId: string }) {
       void load()
     }
   }
+
+  const remove = async (t: TeamTask) => {
+    setError(null)
+    setDeleting(null)
+    try {
+      await teamApi.deleteTask(team.id, t.id)
+      setTasks((list) => list?.filter((x) => x.id !== t.id) ?? null)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+  }
+
+  const trashButton = (t: TeamTask) =>
+    t.canEdit && (
+      <button
+        type="button"
+        aria-label={`${t.title} 삭제`}
+        title="삭제"
+        onClick={() => setDeleting(deleting === t.id ? null : t.id)}
+        className="shrink-0 rounded-md p-1.5 text-faint hover:bg-subtle hover:text-danger"
+      >
+        <Trash size={15} />
+      </button>
+    )
+
+  const confirmRemove = (t: TeamTask) =>
+    deleting === t.id && (
+      <ConfirmInline
+        message={t.subtasks.length ? `‘${t.title}’을 지울까요? 하위 업무와 담당자 정보도 함께 지워져요.` : `‘${t.title}’을 지울까요? 담당자 정보도 함께 지워져요.`}
+        confirmLabel="지우기"
+        onCancel={() => setDeleting(null)}
+        onConfirm={() => void remove(t)}
+      />
+    )
 
   const statusControl = (t: TeamTask) =>
     t.canSetStatus ? (
@@ -223,15 +258,21 @@ export function TeamTasks({ team, meId }: { team: TeamDetail; meId: string }) {
         <ul aria-label="업무 목록" className={`${card} flex flex-col divide-y divide-line`}>
           {shown.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted">조건에 맞는 업무가 없어요</li>}
           {shown.map((t) => (
-            <li key={t.id} aria-label={t.title} className="flex flex-col gap-1.5 px-4 py-3 md:flex-row md:items-center md:gap-3">
-              <button onClick={() => setEditing(t)} className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left">
-                <span className={`text-[15px] font-medium md:text-sm ${t.status === 'done' ? `${doneStrike} text-muted` : ''}`}>{t.title}</span>
-                <Meta task={t} today={today} />
-              </button>
-              <div className="flex items-center justify-between gap-3 md:justify-end">
-                <Assignees task={t} />
-                {statusControl(t)}
+            <li key={t.id} aria-label={t.title} className="flex flex-col gap-2 px-4 py-3">
+              <div className="flex flex-col gap-1.5 md:flex-row md:items-center md:gap-3">
+                <button onClick={() => setEditing(t)} className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left">
+                  <span className={`text-[15px] font-medium md:text-sm ${t.status === 'done' ? `${doneStrike} text-muted` : ''}`}>{t.title}</span>
+                  <Meta task={t} today={today} />
+                </button>
+                <div className="flex items-center justify-between gap-3 md:justify-end">
+                  <Assignees task={t} />
+                  <div className="flex items-center gap-1.5">
+                    {statusControl(t)}
+                    {trashButton(t)}
+                  </div>
+                </div>
               </div>
+              {confirmRemove(t)}
             </li>
           ))}
         </ul>
@@ -267,11 +308,15 @@ export function TeamTasks({ team, meId }: { team: TeamDetail; meId: string }) {
                     onDragEnd={() => setDragId(null)}
                     className={`${card} flex flex-col gap-2 p-3 ${t.canSetStatus ? 'cursor-grab active:cursor-grabbing' : ''} ${dragId === t.id ? 'opacity-50' : ''}`}
                   >
-                    <button onClick={() => setEditing(t)} className="flex flex-col items-start gap-1 text-left">
-                      <span className={`text-sm font-medium ${t.status === 'done' ? `${doneStrike} text-muted` : ''}`}>{t.title}</span>
-                      <Meta task={t} today={today} />
-                    </button>
+                    <div className="flex items-start gap-1">
+                      <button onClick={() => setEditing(t)} className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left">
+                        <span className={`text-sm font-medium ${t.status === 'done' ? `${doneStrike} text-muted` : ''}`}>{t.title}</span>
+                        <Meta task={t} today={today} />
+                      </button>
+                      {trashButton(t)}
+                    </div>
                     <Assignees task={t} />
+                    {confirmRemove(t)}
                   </article>
                 ))}
               </section>
@@ -291,11 +336,7 @@ export function TeamTasks({ team, meId }: { team: TeamDetail; meId: string }) {
             setEditing(null)
             void load()
           }}
-          onDeleted={(id) => {
-            setTasks((list) => list?.filter((x) => x.id !== id) ?? null)
-            setEditing(null)
-          }}
-          onChanged={(t) => setTasks((list) => list?.map((x) => (x.id === t.id ? t : x)) ?? null)}
+          onChanged={(t) => setTasks((list) => (list?.some((x) => x.id === t.id) ? list.map((x) => (x.id === t.id ? t : x)) : [...(list ?? []), t]))}
         />
       )}
     </section>
@@ -308,13 +349,12 @@ interface EditorProps {
   task: TeamTask | null
   onClose: () => void
   onSaved: (t: TeamTask) => void
-  onDeleted: (id: string) => void
   /** The task changed without the editor closing (split for someone). */
   onChanged?: (t: TeamTask) => void
 }
 
 /** Create or edit a team task. Those who may only move its status see the rest read-only. */
-export function TaskEditor({ team, meId, task: given, onClose, onSaved, onDeleted, onChanged }: EditorProps) {
+export function TaskEditor({ team, meId, task: given, onClose, onSaved, onChanged }: EditorProps) {
   const [task, setTask] = useState(given)
   const isManager = team.role !== 'member'
   const editable = task ? task.canEdit : true
@@ -328,7 +368,6 @@ export function TaskEditor({ team, meId, task: given, onClose, onSaved, onDelete
   const [assigned, setAssigned] = useState<Record<string, string>>(() => (task ? Object.fromEntries(task.assignees.map((a) => [a.userId, boxesToHours(a.boxes)])) : isManager ? {} : { [meId]: '' }))
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -338,7 +377,7 @@ export function TaskEditor({ team, meId, task: given, onClose, onSaved, onDelete
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose, planning])
 
-  // Splitting works from the saved task, so unsaved edits come first.
+  // Splitting works from the saved task, so unsaved edits are saved first.
   const dirty =
     !!task &&
     editable &&
@@ -348,18 +387,21 @@ export function TaskEditor({ team, meId, task: given, onClose, onSaved, onDelete
       dueDate !== (task.dueDate ?? '') ||
       estimate !== boxesToHours(task.estimateBoxes) ||
       JSON.stringify(Object.entries(assigned).sort()) !== JSON.stringify(task.assignees.map((a) => [a.userId, boxesToHours(a.boxes)]).sort()))
-  const planBlocked = !task ? '' : !task.dueDate ? '마감일을 정하고 저장하면 업무를 나눌 수 있어요.' : !task.assignees.length ? '담당자를 정하고 저장하면 업무를 나눌 수 있어요.' : dirty ? '바꾼 내용을 저장한 뒤 나눌 수 있어요.' : ''
+  // A new task is the creator's to split; a saved one says who may.
+  const canPlan = task ? task.canPlan : editable
+  const planBlocked = !dueDate ? '마감일을 정하면 업무를 나눌 수 있어요.' : !Object.keys(assigned).length ? '담당자를 정하면 업무를 나눌 수 있어요.' : ''
 
   const estimateBoxes = hoursToBoxes(estimate)
   const shares = Object.values(assigned).map(hoursToBoxes)
   const shareSum = shares.reduce<number>((s, b) => s + (b && !Number.isNaN(b) ? b : 0), 0)
   const canAssign = (userId: string) => editable && (isManager || userId === meId)
 
-  const save = async () => {
+  /** Saves the form; the saved task, or null when it could not be. */
+  const persist = async (): Promise<TeamTask | null> => {
     setError(null)
-    if (!title.trim()) return setError('업무 제목을 적어 주세요')
-    if (Number.isNaN(estimateBoxes) || shares.some((b) => Number.isNaN(b))) return setError('시간은 0보다 큰 숫자로 적어 주세요 (예: 1.5)')
-    if (startDate && dueDate && startDate > dueDate) return setError('시작일이 마감일보다 늦어요')
+    if (!title.trim()) return (setError('업무 제목을 적어 주세요'), null)
+    if (Number.isNaN(estimateBoxes) || shares.some((b) => Number.isNaN(b))) return (setError('시간은 0보다 큰 숫자로 적어 주세요 (예: 1.5)'), null)
+    if (startDate && dueDate && startDate > dueDate) return (setError('시작일이 마감일보다 늦어요'), null)
     let body: TeamTaskInput
     if (!editable) body = { status }
     else
@@ -377,11 +419,30 @@ export function TaskEditor({ team, meId, task: given, onClose, onSaved, onDelete
       }
     setSaving(true)
     try {
-      onSaved(task ? await teamApi.updateTask(team.id, task.id, body) : await teamApi.createTask(team.id, body))
+      return task ? await teamApi.updateTask(team.id, task.id, body) : await teamApi.createTask(team.id, body)
     } catch (e) {
       setError((e as Error).message)
+      return null
+    } finally {
       setSaving(false)
     }
+  }
+
+  const save = async () => {
+    const saved = await persist()
+    if (saved) onSaved(saved)
+  }
+
+  // "AI로 업무 나누기" while creating or after changing the task: save it, stay
+  // in the editor, and split the saved task.
+  const plan = async () => {
+    setNotice(null)
+    if (task && !dirty) return setPlanning(true)
+    const saved = await persist()
+    if (!saved) return
+    setTask(saved)
+    onChanged?.(saved)
+    if (saved.canPlan) setPlanning(true)
   }
 
   return (
@@ -511,31 +572,25 @@ export function TaskEditor({ team, meId, task: given, onClose, onSaved, onDelete
             )}
           </fieldset>
 
-          {task && (task.subtasks.length > 0 || task.canPlan) && (
+          {((task && task.subtasks.length > 0) || canPlan) && (
             <section aria-label="하위 업무" className="flex flex-col gap-2">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-sm font-medium text-ink-2">
-                  하위 업무 {task.subtasks.length > 0 && <span className="font-mono text-muted">{task.subtasks.filter((x) => x.status === 'done').length}/{task.subtasks.length}</span>}
+                  하위 업무 {!!task?.subtasks.length && <span className="font-mono text-muted">{task.subtasks.filter((x) => x.status === 'done').length}/{task.subtasks.length}</span>}
                 </h3>
-                {task.canPlan && (
-                  <button
-                    type="button"
-                    className={`${aiOutlineButton} h-8 px-3 text-xs`}
-                    disabled={!!planBlocked}
-                    onClick={() => {
-                      setNotice(null)
-                      setPlanning(true)
-                    }}
-                  >
-                    <Sparkle size={13} /> {task.subtasks.length ? '업무 다시 나누기' : 'AI로 업무 나누기'}
+                {canPlan && (
+                  <button type="button" className={`${aiOutlineButton} h-8 px-3 text-xs`} disabled={!!planBlocked || saving} onClick={() => void plan()}>
+                    <Sparkle size={13} /> {task?.subtasks.length ? '업무 다시 나누기' : 'AI로 업무 나누기'}
                   </button>
                 )}
               </div>
-              {task.subtasks.length === 0 && task.canPlan && !planBlocked && (
-                <p className="text-xs text-muted">업무 전체를 하위 업무로 나누고, 담당자마다 맡은 시간에 맞게 배정해 각자의 Brain Dump에 넣어요.</p>
+              {!task?.subtasks.length && canPlan && !planBlocked && (
+                <p className="text-xs text-muted">
+                  업무 전체를 하위 업무로 나누고, 담당자마다 맡은 시간에 맞게 배정해 각자의 Brain Dump에 넣어요.{(!task || dirty) && ' 누르면 먼저 저장해요.'}
+                </p>
               )}
-              {planBlocked && task.canPlan && <p className="text-xs text-muted">{planBlocked}</p>}
-              {task.subtasks.length > 0 && (
+              {planBlocked && canPlan && <p className="text-xs text-muted">{planBlocked}</p>}
+              {task && task.subtasks.length > 0 && (
                 <ul className="flex flex-col divide-y divide-line rounded-xl border border-line">
                   {task.subtasks.map((x) => {
                     const who = task.assignees.find((a) => a.userId === x.assigneeId)
@@ -568,29 +623,9 @@ export function TaskEditor({ team, meId, task: given, onClose, onSaved, onDelete
             </p>
           )}
           {error && <p className="text-sm text-danger">{error}</p>}
-          {confirmDelete && task && (
-            <ConfirmInline
-              message="이 업무를 지울까요? 담당자 정보도 함께 지워져요."
-              confirmLabel="지우기"
-              onCancel={() => setConfirmDelete(false)}
-              onConfirm={async () => {
-                try {
-                  await teamApi.deleteTask(team.id, task.id)
-                  onDeleted(task.id)
-                } catch (e) {
-                  setError((e as Error).message)
-                }
-              }}
-            />
-          )}
         </form>
 
         <footer className="flex items-center gap-2 border-t border-line px-4 py-3 pb-[max(env(safe-area-inset-bottom),12px)] md:px-5">
-          {task && editable && !confirmDelete && (
-            <button type="button" className="text-sm text-danger hover:underline" onClick={() => setConfirmDelete(true)}>
-              삭제
-            </button>
-          )}
           <button type="button" className={`${secondaryButton} ml-auto h-10`} onClick={onClose}>
             취소
           </button>
