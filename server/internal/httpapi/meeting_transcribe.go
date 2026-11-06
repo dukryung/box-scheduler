@@ -297,7 +297,7 @@ func (a *API) useTranscription(w http.ResponseWriter, r *http.Request) {
 	}
 	me := currentUser(r).ID
 	if !canEditMeeting(role, me, cur) {
-		writeError(w, http.StatusForbidden, "회의를 만든 사람과 매니저만 고칠 수 있어요")
+		writeError(w, http.StatusForbidden, "회의를 만든 사람과 manager만 고칠 수 있어요")
 		return
 	}
 	text := transcriptionText(cur.Audio)

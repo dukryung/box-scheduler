@@ -22,7 +22,7 @@ const (
 	maxInvitesBatch = 20
 )
 
-var roleLabel = map[string]string{"owner": "owner", "manager": "매니저", "member": "일반"}
+var roleLabel = map[string]string{"owner": "owner", "manager": "manager", "member": "member"}
 
 func cleanTeamName(s string) (string, bool) {
 	s = strings.TrimSpace(s)
@@ -223,8 +223,8 @@ func (a *API) createInvites(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if body.Role != "manager" && body.Role != "member" {
-		writeError(w, http.StatusBadRequest, "역할은 매니저나 일반 중에서 골라 주세요")
+	if body.Role != "owner" && body.Role != "manager" && body.Role != "member" {
+		writeError(w, http.StatusBadRequest, "역할은 owner, manager, member 중에서 골라 주세요")
 		return
 	}
 	if len(body.Emails) == 0 || len(body.Emails) > maxInvitesBatch {
@@ -311,7 +311,8 @@ func (a *API) revokeInvite(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// updateMember changes a member's role (owner only).
+// updateMember changes a member's role (owners only). Owners may make others
+// owners too, and step down themselves, as long as one owner is left.
 func (a *API) updateMember(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Role string `json:"role"`
@@ -323,8 +324,8 @@ func (a *API) updateMember(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if body.Role != "manager" && body.Role != "member" {
-		writeError(w, http.StatusBadRequest, "역할은 매니저나 일반 중에서 골라 주세요")
+	if body.Role != "owner" && body.Role != "manager" && body.Role != "member" {
+		writeError(w, http.StatusBadRequest, "역할은 owner, manager, member 중에서 골라 주세요")
 		return
 	}
 	if err := a.store.SetMemberRole(r.Context(), teamID, chi.URLParam(r, "userID"), body.Role); err != nil {
@@ -334,8 +335,8 @@ func (a *API) updateMember(w http.ResponseWriter, r *http.Request) {
 	a.getTeam(w, r)
 }
 
-// removeMember: anyone may leave (except the owner); managers may remove
-// members; the owner may remove anyone else.
+// removeMember: anyone may leave (an owner, while another owner stays);
+// managers may remove members; owners may remove anyone else.
 func (a *API) removeMember(w http.ResponseWriter, r *http.Request) {
 	teamID, role, ok := a.teamRole(w, r, "member")
 	if !ok {
@@ -349,13 +350,10 @@ func (a *API) removeMember(w http.ResponseWriter, r *http.Request) {
 			writeStoreError(w, err)
 			return
 		}
-		if store.RoleRank(role) < store.RoleRank("manager") || store.RoleRank(targetRole) >= store.RoleRank(role) {
+		if role != "owner" && (store.RoleRank(role) < store.RoleRank("manager") || store.RoleRank(targetRole) >= store.RoleRank(role)) {
 			writeError(w, http.StatusForbidden, "이 멤버를 내보낼 권한이 없어요")
 			return
 		}
-	} else if role == "owner" {
-		writeError(w, http.StatusBadRequest, "owner는 다른 멤버에게 owner를 넘긴 뒤에 나갈 수 있어요")
-		return
 	}
 	if err := a.store.RemoveMember(r.Context(), teamID, target); err != nil {
 		writeStoreError(w, err)

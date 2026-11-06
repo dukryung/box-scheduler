@@ -15,6 +15,8 @@ var (
 	// ErrWrongEmail means an invite was sent to another address than the signed-in one.
 	ErrWrongEmail = errors.New("invite is for another email")
 	ErrMember     = errors.New("already a member")
+	// ErrLastOwner means the change would leave the team with no owner.
+	ErrLastOwner = errors.New("a team keeps at least one owner")
 )
 
 type Team struct {
@@ -133,19 +135,37 @@ func (s *Store) DeleteTeam(ctx context.Context, teamID string) error {
 }
 
 func (s *Store) SetMemberRole(ctx context.Context, teamID, userID, role string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE team_members SET role = $3 WHERE team_id = $1 AND user_id = $2 AND role <> 'owner'`, teamID, userID, role)
-	if err == nil && tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return mapErr(err)
+	return s.keepingAnOwner(ctx, teamID, `UPDATE team_members SET role = $3 WHERE team_id = $1 AND user_id = $2`, teamID, userID, role)
 }
 
 func (s *Store) RemoveMember(ctx context.Context, teamID, userID string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM team_members WHERE team_id = $1 AND user_id = $2 AND role <> 'owner'`, teamID, userID)
-	if err == nil && tag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return mapErr(err)
+	return s.keepingAnOwner(ctx, teamID, `DELETE FROM team_members WHERE team_id = $1 AND user_id = $2`, teamID, userID)
+}
+
+// keepingAnOwner runs a change to one membership and undoes it if the team
+// would be left without an owner. The team row is locked so two owners
+// stepping down at once cannot both go through.
+func (s *Store) keepingAnOwner(ctx context.Context, teamID, sql string, args ...any) error {
+	return s.inTx(ctx, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT 1 FROM teams WHERE id = $1 FOR UPDATE`, teamID); err != nil {
+			return mapErr(err)
+		}
+		tag, err := tx.Exec(ctx, sql, args...)
+		if err != nil {
+			return mapErr(err)
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		var owners int
+		if err := tx.QueryRow(ctx, `SELECT count(*) FROM team_members WHERE team_id = $1 AND role = 'owner'`, teamID).Scan(&owners); err != nil {
+			return err
+		}
+		if owners == 0 {
+			return ErrLastOwner
+		}
+		return nil
+	})
 }
 
 // TransferOwner hands the team to another member; the old owner becomes a manager.

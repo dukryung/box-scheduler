@@ -564,7 +564,7 @@ export function TaskEditor({ team, meId, task: given, onClose, onSaved, onChange
                 </div>
               )
             })}
-            {editable && !isManager && <p className="text-xs text-muted">일반 멤버는 본인만 담당자로 지정할 수 있어요.</p>}
+            {editable && !isManager && <p className="text-xs text-muted">member는 본인만 담당자로 지정할 수 있어요.</p>}
             {estimateBoxes && !Number.isNaN(estimateBoxes) && shareSum > 0 && shareSum !== estimateBoxes && (
               <p className="text-xs text-ink-2">
                 맡은 시간 합계 {formatDuration(shareSum)} · 예상 시간 {formatDuration(estimateBoxes)}과 달라요

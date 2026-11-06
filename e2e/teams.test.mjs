@@ -69,8 +69,15 @@ try {
   const mailMinji = await mailTo(people.minji)
   check(mailMinji?.link?.startsWith(`${BASE}/invite/`) && mailMinji.raw.includes('초대 수락하기'), 'the email carries the invite link')
   check(mailMinji.subject.includes('팀에 초대했어요'), `subject: ${mailMinji?.subject}`)
-  await p.getByRole('region', { name: /대기 중인 초대 2/ }).waitFor()
-  check(true, 'both show as pending')
+  await p.getByRole('list', { name: '초대 대기 2' }).waitFor()
+  check(await p.getByRole('region', { name: /^멤버 1/ }).getByRole('list', { name: '초대 대기 2' }).isVisible(), 'both show as pending, under the members')
+  await p.goto(`${BASE}/team/${teamId}?tab=settings`)
+  await p.getByRole('region', { name: /^멤버 1/ }).waitFor()
+  check((await p.getByLabel('초대할 이메일 1').count()) === 0, 'settings: the invite form waits behind 멤버 추가')
+  await p.getByRole('button', { name: '멤버 추가' }).click()
+  check(await p.getByRole('group', { name: '멤버 추가' }).getByLabel('초대할 이메일 1').isVisible(), '멤버 추가 opens the email invite in the member list')
+  await p.getByRole('button', { name: '닫기' }).click()
+  check((await p.getByLabel('초대할 이메일 1').count()) === 0 && (await p.getByRole('button', { name: '멤버 추가' }).isVisible()), 'and it closes again')
   const dup = (await call('POST', `/teams/${teamId}/invites`, { emails: [people.lead], role: 'member' }, lead.cookie)).body.results[0]
   check(dup.error === '이미 팀 멤버예요', 'a current member is not invited')
 
@@ -78,7 +85,7 @@ try {
   const m = await pageAs(null)
   await m.goto(mailMinji.link)
   await m.getByText(`‘개발팀 ${tag}’`).first().waitFor()
-  check((await m.textContent('main')).includes('일반'), 'invite page shows team, inviter and role')
+  check((await m.textContent('main')).includes('member'), 'invite page shows team, inviter and role')
   await m.getByRole('link', { name: '가입하고 참여하기' }).click()
   await m.getByRole('heading', { name: '가입하기' }).waitFor()
   check((await m.getByLabel('이메일').inputValue()) === people.minji, 'sign-up email prefilled from the invite')
@@ -93,7 +100,7 @@ try {
   const minjiMe = (await m.evaluate(() => fetch('/api/auth/me').then((r) => r.json())))
   cleanup.push(minjiMe.id)
   check(minjiMe.onboarded, 'joining from an invite skips the choice page')
-  check((await m.getByRole('region', { name: '이메일로 초대하기' }).count()) === 0, 'a member cannot invite')
+  check((await m.getByRole('button', { name: '멤버 추가' }).count()) === 0 && (await m.getByLabel('초대할 이메일 1').count()) === 0, 'a member cannot invite')
   const reuse = await m.evaluate((link) => fetch(`/api/invites/${link.split('/invite/')[1]}`).then((r) => r.json()), mailMinji.link)
   check(reuse.status === 'accepted', 'the link is used up')
 
@@ -140,7 +147,8 @@ try {
   check((await call('DELETE', `/teams/${teamId}/invites/${pending[0].id}`, null, seojun.cookie)).status === 204, 'manager can cancel an invite')
   check((await call('GET', `/invites/${oldLink.split('/invite/')[1]}`)).body.status === 'revoked', 'a cancelled invite stops working')
 
-  // 7. Owner: change role, switcher, transfer, leave, delete
+  // 7. Owner: change role, a second owner, switcher, transfer, leave, delete
+  const minjiCookie0 = (await call('POST', '/auth/login', { email: people.minji, password: pw })).cookie
   await p.goto(`${BASE}/team/${teamId}?tab=members`)
   await p.getByLabel(`${people.minji} 역할`).selectOption('manager')
   await p.waitForTimeout(400)
@@ -149,12 +157,21 @@ try {
   await p.getByRole('menu', { name: '공간 전환' }).getByRole('menuitem', { name: '내 공간' }).click()
   await p.waitForURL('**/day/**')
   check(true, 'space switcher goes back to the personal space')
-  check((await call('DELETE', `/teams/${teamId}/members/${lead.body.id}`, null, lead.cookie)).status === 400, 'the owner cannot leave without handing over')
+  await p.goto(`${BASE}/team/${teamId}?tab=settings`)
+  await p.getByLabel(`${people.minji} 역할`).selectOption('owner')
+  await p.waitForTimeout(400)
+  let roles = Object.fromEntries((await call('GET', `/teams/${teamId}`, null, lead.cookie)).body.memberList.map((x) => [x.email, x.role]))
+  check(roles[people.minji] === 'owner' && roles[people.lead] === 'owner', 'an owner can make another member an owner too')
+  check((await p.getByRole('button', { name: '팀 나가기' }).count()) === 1, 'with a second owner, an owner may leave')
+  check((await call('PATCH', `/teams/${teamId}/members/${minjiMe.id}`, { role: 'manager' }, minjiCookie0)).status === 200, 'a second owner can step down')
+  const last = await call('PATCH', `/teams/${teamId}/members/${lead.body.id}`, { role: 'manager' }, lead.cookie)
+  check(last.status === 400 && last.body.error.includes('owner가 한 명은'), 'the last owner cannot step down')
+  check((await call('DELETE', `/teams/${teamId}/members/${lead.body.id}`, null, lead.cookie)).status === 400, 'the last owner cannot leave without handing over')
   check((await call('POST', `/teams/${teamId}/transfer`, { userId: seojun.body.id }, lead.cookie)).body.role === 'manager', 'owner handed to seojun; lead is now a manager')
   check((await call('DELETE', `/teams/${teamId}/members/${lead.body.id}`, null, lead.cookie)).status === 204, 'lead can now leave')
   check((await call('DELETE', `/teams/${teamId}`, { confirm: 'wrong' }, seojun.cookie)).status === 400, 'delete needs the team name')
   check((await call('DELETE', `/teams/${teamId}`, { confirm: `개발팀 ${tag}` }, seojun.cookie)).status === 204, 'the owner deletes the team')
-  const minjiCookie = (await call('POST', '/auth/login', { email: people.minji, password: pw })).cookie
+  const minjiCookie = minjiCookie0
   check((await call('GET', `/teams/${teamId}`, null, minjiCookie)).status === 404, 'gone for its members too')
 
   // 8. Personal choice and phone

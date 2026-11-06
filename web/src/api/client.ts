@@ -142,7 +142,7 @@ export const teamApi = {
   invite: (id: string, emails: string[], role: Exclude<TeamRole, 'owner'>) => request<{ results: InviteResult[] }>(`/teams/${id}/invites`, post({ emails, role })),
   resend: (id: string, inviteId: string) => request<InviteResult>(`/teams/${id}/invites/${inviteId}/resend`, { method: 'POST' }),
   revoke: (id: string, inviteId: string) => request<void>(`/teams/${id}/invites/${inviteId}`, { method: 'DELETE' }),
-  setRole: (id: string, userId: string, role: Exclude<TeamRole, 'owner'>) =>
+  setRole: (id: string, userId: string, role: TeamRole) =>
     request<TeamDetail>(`/teams/${id}/members/${userId}`, { method: 'PATCH', body: JSON.stringify({ role }) }),
   removeMember: (id: string, userId: string) => request<void>(`/teams/${id}/members/${userId}`, { method: 'DELETE' }),
   transfer: (id: string, userId: string) => request<TeamDetail>(`/teams/${id}/transfer`, post({ userId })),

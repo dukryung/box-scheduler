@@ -227,7 +227,7 @@ func (a *API) updateMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !canEditMeeting(role, currentUser(r).ID, cur) {
-		writeError(w, http.StatusForbidden, "회의를 만든 사람과 매니저만 고칠 수 있어요")
+		writeError(w, http.StatusForbidden, "회의를 만든 사람과 manager만 고칠 수 있어요")
 		return
 	}
 	f := store.MeetingFields{Title: cur.Title, HeldOn: cur.HeldOn, Transcript: cur.Transcript, Minutes: cur.Minutes}
@@ -262,7 +262,7 @@ func (a *API) deleteMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !canEditMeeting(role, currentUser(r).ID, cur) {
-		writeError(w, http.StatusForbidden, "회의를 만든 사람과 매니저만 지울 수 있어요")
+		writeError(w, http.StatusForbidden, "회의를 만든 사람과 manager만 지울 수 있어요")
 		return
 	}
 	if err := a.store.DeleteMeeting(r.Context(), teamID, cur.ID); err != nil {
@@ -282,7 +282,7 @@ func (a *API) startMinutes(w http.ResponseWriter, r *http.Request) {
 	}
 	me := currentUser(r)
 	if !canEditMeeting(role, me.ID, cur) {
-		writeError(w, http.StatusForbidden, "회의를 만든 사람과 매니저만 AI로 정리할 수 있어요")
+		writeError(w, http.StatusForbidden, "회의를 만든 사람과 manager만 AI로 정리할 수 있어요")
 		return
 	}
 	if transcribing(cur) {
@@ -816,7 +816,7 @@ func (a *API) confirmMeeting(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if store.RoleRank(role) < store.RoleRank("manager") {
-		writeError(w, http.StatusForbidden, "매니저 이상만 회의 할 일을 확정할 수 있어요")
+		writeError(w, http.StatusForbidden, "manager 이상만 회의 할 일을 확정할 수 있어요")
 		return
 	}
 	members, err := a.store.TeamMembers(r.Context(), teamID)

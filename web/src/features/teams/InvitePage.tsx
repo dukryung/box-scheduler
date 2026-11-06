@@ -8,7 +8,7 @@ import { ThemeToggle } from '../../components/ThemeToggle'
 import { useAuth } from '../../store/authStore'
 import { useTeams } from '../../store/teamsStore'
 
-const ROLE = { manager: '매니저', member: '일반' } as const
+const ROLE = { manager: 'manager', member: 'member' } as const
 
 /** /invite/:token — what the email's link opens, signed in or not. */
 export function InvitePage() {

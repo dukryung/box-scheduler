@@ -92,7 +92,7 @@ function MeetingList({ team, onOpen }: { team: TeamDetail; onOpen: (id: string, 
   return (
     <section aria-label="회의" className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-muted">회의 내용을 붙여 넣으면 AI가 회의록과 할 일을 정리해요. 매니저가 담당자를 정해 확정하면 팀 업무가 돼요.</p>
+        <p className="text-sm text-muted">회의 내용을 붙여 넣으면 AI가 회의록과 할 일을 정리해요. manager가 담당자를 정해 확정하면 팀 업무가 돼요.</p>
         {!adding && (
           <button className={`${primaryButton} h-10 shrink-0`} onClick={() => setAdding(true)}>
             <Plus size={16} /> 새 회의
@@ -464,7 +464,7 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
         {m.minutes && m.status === 'ready' && !processing && (editable || m.canConfirm) && (
           <p className="rounded-xl border border-ai/30 px-3.5 py-3 text-sm text-ink-2">
             <b className="font-semibold text-ink">AI가 제안한 회의록과 할 일이에요.</b> 내용을 확인해 고칠 곳을 고치고, 할 일마다 담당자와 마감일을 정한 뒤{' '}
-            {m.canConfirm ? '확정해 주세요' : '매니저에게 확정을 부탁해 주세요'}. 담당자는 회의에서 맡겠다고 하거나 지목된 사람만 미리 넣었어요.
+            {m.canConfirm ? '확정해 주세요' : 'manager에게 확정을 부탁해 주세요'}. 담당자는 회의에서 맡겠다고 하거나 지목된 사람만 미리 넣었어요.
           </p>
         )}
         {m.aiError && !processing && <AIError error={m.aiError} />}
@@ -743,7 +743,7 @@ function MeetingView({ team, id, autoRecord, onRecordStarted, onBack }: ViewProp
           )}
         </div>
       )}
-      {!editable && m.status !== 'confirmed' && !m.canConfirm && <p className="text-xs text-muted">회의를 만든 사람과 매니저가 고치고, 매니저가 확정해요.</p>}
+      {!editable && m.status !== 'confirmed' && !m.canConfirm && <p className="text-xs text-muted">회의를 만든 사람과 manager가 고치고, manager가 확정해요.</p>}
     </section>
   )
 }

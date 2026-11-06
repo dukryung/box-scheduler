@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { teamApi } from '../../api/client'
 import type { InviteResult, TeamDetail, TeamMember, TeamRole } from '../../api/types'
 import { ConfirmInline } from '../../components/ConfirmInline'
-import { Gear } from '../../components/icons'
+import { Gear, Mail, Plus } from '../../components/icons'
 import { card, primaryButton, secondaryButton } from '../../components/styles'
 import { todayISO } from '../../lib/date'
 import { useAuth } from '../../store/authStore'
@@ -13,7 +13,7 @@ import { TeamMeetings } from './TeamMeetings'
 import { TeamMonth } from './TeamMonth'
 import { TeamTasks } from './TeamTasks'
 
-const ROLE_LABEL: Record<TeamRole, string> = { owner: 'owner', manager: '매니저', member: '일반' }
+const ROLE_LABEL: Record<TeamRole, string> = { owner: 'owner', manager: 'manager', member: 'member' }
 const rank = (r: TeamRole) => ({ member: 1, manager: 2, owner: 3 })[r]
 const MAX_INVITES = 20
 const field = 'h-11 w-full rounded-[10px] border border-line-strong bg-surface px-3.5 text-[15px] text-ink outline-none focus:border-accent md:text-sm'
@@ -60,10 +60,13 @@ function CopyLink({ link }: { link: string }) {
 }
 
 function MemberRow({ m, team, meId, onChanged }: { m: TeamMember; team: TeamDetail; meId: string; onChanged: (t?: TeamDetail) => void }) {
-  const [confirm, setConfirm] = useState<'remove' | 'transfer' | null>(null)
+  const [confirm, setConfirm] = useState<'remove' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const self = m.userId === meId
-  const canRemove = !self && rank(team.role) >= 2 && rank(m.role) < rank(team.role)
+  // A team may have several owners; the last one keeps the role.
+  const owners = team.memberList.filter((x) => x.role === 'owner').length
+  const canRemove = !self && (team.role === 'owner' || (team.role === 'manager' && m.role === 'member'))
+  const canSetRole = team.role === 'owner' && (!self || owners > 1)
   const act = async (fn: () => Promise<TeamDetail | void>) => {
     setError(null)
     try {
@@ -82,23 +85,19 @@ function MemberRow({ m, team, meId, onChanged }: { m: TeamMember; team: TeamDeta
           </span>
           <span className="truncate text-xs text-muted">{m.email}</span>
         </div>
-        {team.role === 'owner' && !self && m.role !== 'owner' ? (
+        {canSetRole ? (
           <select
             aria-label={`${m.email} 역할`}
             value={m.role}
-            onChange={(e) => void act(() => teamApi.setRole(team.id, m.userId, e.target.value as 'manager' | 'member'))}
+            onChange={(e) => void act(() => teamApi.setRole(team.id, m.userId, e.target.value as TeamRole))}
             className="h-8 rounded-md border border-line-strong bg-surface px-2 text-xs"
           >
-            <option value="manager">매니저</option>
-            <option value="member">일반</option>
+            <option value="owner">owner</option>
+            <option value="manager">manager</option>
+            <option value="member">member</option>
           </select>
         ) : (
           <RoleBadge role={m.role} />
-        )}
-        {team.role === 'owner' && !self && (
-          <button className="text-xs text-muted underline hover:text-ink" onClick={() => setConfirm('transfer')}>
-            owner 넘기기
-          </button>
         )}
         {canRemove && (
           <button className="text-xs text-danger hover:underline" onClick={() => setConfirm('remove')}>
@@ -112,14 +111,6 @@ function MemberRow({ m, team, meId, onChanged }: { m: TeamMember; team: TeamDeta
           confirmLabel="내보내기"
           onCancel={() => setConfirm(null)}
           onConfirm={() => void act(() => teamApi.removeMember(team.id, m.userId))}
-        />
-      )}
-      {confirm === 'transfer' && (
-        <ConfirmInline
-          message={`${m.email}에게 owner를 넘길까요? 나는 매니저가 돼요.`}
-          confirmLabel="넘기기"
-          onCancel={() => setConfirm(null)}
-          onConfirm={() => void act(() => teamApi.transfer(team.id, m.userId))}
         />
       )}
       {error && <p className="text-xs text-danger">{error}</p>}
@@ -149,6 +140,8 @@ export function TeamView() {
   const [deleting, setDeleting] = useState(false)
   const [confirmName, setConfirmName] = useState('')
   const [leaving, setLeaving] = useState(false)
+  // The invite form opens from 멤버 추가, and by itself right after the team is made.
+  const [adding, setAdding] = useState(() => !!params.get('invite'))
 
   const load = useCallback(async () => {
     try {
@@ -183,6 +176,12 @@ export function TeamView() {
   const removeRow = (i: number) => {
     focusRow.current = Math.max(0, i - 1)
     setEmails((list) => list.filter((_, j) => j !== i))
+  }
+
+  const closeAdding = () => {
+    setAdding(false)
+    setEmails([''])
+    setResults([])
   }
 
   const sendInvites = async () => {
@@ -248,120 +247,146 @@ export function TeamView() {
         {tab === 'month' && <TeamMonth team={team} meId={me?.id ?? ''} />}
         {tab === 'meetings' && <TeamMeetings team={team} />}
 
-        {tab === 'members' && canInvite && (
-          <Section title="이메일로 초대하기">
-            {params.get('invite') && <p className="text-sm text-good">팀을 만들었어요. 함께할 사람을 초대해 보세요.</p>}
-            <fieldset className="flex flex-col gap-2">
-              <legend className="mb-1.5 text-sm font-medium text-ink-2">이메일</legend>
-              {emails.map((email, i) => (
-                <div key={i} className="flex gap-2">
-                  <input
-                    ref={(el) => {
-                      emailInputs.current[i] = el
-                    }}
-                    type="email"
-                    inputMode="email"
-                    autoComplete="off"
-                    aria-label={`초대할 이메일 ${i + 1}`}
-                    value={email}
-                    onChange={(e) => setEmail(i, e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
-                      e.preventDefault()
-                      if (i === emails.length - 1 && email.trim()) addRow()
-                      else emailInputs.current[i + 1]?.focus()
-                    }}
-                    placeholder={i === 0 ? 'minji@example.com' : 'name@example.com'}
-                    className={field}
-                  />
-                  {emails.length > 1 && (
+        {tab === 'members' && (
+          <Section
+            title={`멤버 ${team.memberList.length}`}
+            aside={
+              canInvite &&
+              !adding && (
+                <button type="button" onClick={() => setAdding(true)} className={`${primaryButton} h-9 px-3.5`}>
+                  <Plus size={15} /> 멤버 추가
+                </button>
+              )
+            }
+          >
+            {canInvite && adding && (
+              <div role="group" aria-label="멤버 추가" className="flex flex-col gap-3 rounded-xl border border-line bg-ground p-3.5 md:p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold">이메일로 초대해서 추가하기</h3>
+                  <button type="button" onClick={closeAdding} className="rounded-md px-2 py-1 text-xs text-muted hover:bg-subtle hover:text-ink">
+                    닫기
+                  </button>
+                </div>
+                {params.get('invite') && <p className="text-sm text-good">팀을 만들었어요. 함께할 사람을 초대해 보세요.</p>}
+                <fieldset className="flex flex-col gap-2">
+                  <legend className="mb-1.5 text-sm font-medium text-ink-2">이메일</legend>
+                  {emails.map((email, i) => (
+                    <div key={i} className="flex gap-2">
+                      <input
+                        ref={(el) => {
+                          emailInputs.current[i] = el
+                        }}
+                        type="email"
+                        inputMode="email"
+                        autoComplete="off"
+                        aria-label={`초대할 이메일 ${i + 1}`}
+                        value={email}
+                        onChange={(e) => setEmail(i, e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter' || e.nativeEvent.isComposing) return
+                          e.preventDefault()
+                          if (i === emails.length - 1 && email.trim()) addRow()
+                          else emailInputs.current[i + 1]?.focus()
+                        }}
+                        placeholder={i === 0 ? 'minji@example.com' : 'name@example.com'}
+                        className={field}
+                      />
+                      {emails.length > 1 && (
+                        <button
+                          type="button"
+                          aria-label={`이메일 ${i + 1} 지우기`}
+                          onClick={() => removeRow(i)}
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-line-strong text-lg text-muted hover:bg-subtle hover:text-ink"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {emails.length < MAX_INVITES && (
                     <button
                       type="button"
-                      aria-label={`이메일 ${i + 1} 지우기`}
-                      onClick={() => removeRow(i)}
-                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] border border-line-strong text-lg text-muted hover:bg-subtle hover:text-ink"
+                      onClick={addRow}
+                      className="flex h-10 items-center justify-center gap-1 rounded-[10px] border border-dashed border-line-strong text-sm font-medium text-ink-2 hover:bg-subtle hover:text-ink"
                     >
-                      ×
+                      + 이메일 추가
                     </button>
                   )}
+                </fieldset>
+                <div className="flex flex-wrap items-end gap-2">
+                  <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
+                    역할
+                    <select
+                      value={role}
+                      onChange={(e) => setRole(e.target.value as 'manager' | 'member')}
+                      className="h-11 rounded-[10px] border border-line-strong bg-surface px-3 text-sm"
+                    >
+                      <option value="member">member — 내 업무 추가·수정, 할당받은 일 관리</option>
+                      <option value="manager">manager — 모든 업무와 담당자 관리, 초대</option>
+                    </select>
+                  </label>
+                  <button className={`${primaryButton} h-11`} disabled={sending || !filled.length} onClick={() => void sendInvites()}>
+                    {sending ? '보내는 중…' : filled.length > 1 ? `${filled.length}명 초대 보내기` : '초대 보내기'}
+                  </button>
                 </div>
-              ))}
-              {emails.length < MAX_INVITES && (
-                <button type="button" onClick={addRow} className="flex h-10 items-center justify-center gap-1 rounded-[10px] border border-dashed border-line-strong text-sm font-medium text-ink-2 hover:bg-subtle hover:text-ink">
-                  + 이메일 추가
-                </button>
-              )}
-            </fieldset>
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-2">
-                역할
-                <select value={role} onChange={(e) => setRole(e.target.value as 'manager' | 'member')} className="h-11 rounded-[10px] border border-line-strong bg-surface px-3 text-sm">
-                  <option value="member">일반 — 내 업무 추가·수정, 할당받은 일 관리</option>
-                  <option value="manager">매니저 — 모든 업무와 담당자 관리, 초대</option>
-                </select>
-              </label>
-              <button className={`${primaryButton} h-11`} disabled={sending || !filled.length} onClick={() => void sendInvites()}>
-                {sending ? '보내는 중…' : filled.length > 1 ? `${filled.length}명 초대 보내기` : '초대 보내기'}
-              </button>
-            </div>
-            {!team.mailEnabled && <p className="text-xs text-muted">메일 발송이 아직 설정되지 않아, 초대하면 링크가 나와요. 링크를 직접 전달해 주세요.</p>}
-            {results.length > 0 && (
-              <ul className="flex flex-col gap-1.5 text-sm" aria-label="초대 결과">
-                {results.map((r, i) => (
-                  <li key={i} className="flex flex-wrap items-center gap-2">
-                    <span className="font-medium">{r.email}</span>
-                    {r.sent && <span className="text-good">메일을 보냈어요</span>}
-                    {r.error && <span className="text-danger">{r.error}</span>}
-                    {r.link && <CopyLink link={r.link} />}
-                  </li>
-                ))}
-              </ul>
+                {!team.mailEnabled && <p className="text-xs text-muted">메일 발송이 아직 설정되지 않아, 초대하면 링크가 나와요. 링크를 직접 전달해 주세요.</p>}
+                {results.length > 0 && (
+                  <ul className="flex flex-col gap-1.5 text-sm" aria-label="초대 결과">
+                    {results.map((r, i) => (
+                      <li key={i} className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{r.email}</span>
+                        {r.sent && <span className="text-good">메일을 보냈어요</span>}
+                        {r.error && <span className="text-danger">{r.error}</span>}
+                        {r.link && <CopyLink link={r.link} />}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
-          </Section>
-        )}
-
-        {tab === 'members' && (
-          <Section title={`멤버 ${team.memberList.length}`}>
             <ul className="flex flex-col divide-y divide-line">
               {team.memberList.map((m) => (
                 <MemberRow key={m.userId} m={m} team={team} meId={me?.id ?? ''} onChanged={changed} />
               ))}
             </ul>
-          </Section>
-        )}
-
-        {tab === 'members' && canInvite && team.invites.length > 0 && (
-          <Section title={`대기 중인 초대 ${team.invites.length}`}>
-            <ul className="flex flex-col divide-y divide-line">
-              {team.invites.map((inv) => (
-                <li key={inv.id} aria-label={inv.email} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm">
-                  <span className="min-w-0 flex-1 truncate font-medium">{inv.email}</span>
-                  <RoleBadge role={inv.role} />
-                  <span className="text-xs text-muted">
-                    {inv.sentAt ? '메일 보냄' : '링크만'} · {dateText(inv.expiresAt)}까지
-                  </span>
-                  <button
-                    className="text-xs text-ink-2 underline"
-                    onClick={async () => {
-                      const r = await teamApi.resend(team.id, inv.id)
-                      setResults([r])
-                      await load()
-                    }}
-                  >
-                    다시 보내기
-                  </button>
-                  <button
-                    className="text-xs text-danger"
-                    onClick={async () => {
-                      await teamApi.revoke(team.id, inv.id)
-                      await load()
-                    }}
-                  >
-                    취소
-                  </button>
-                </li>
-              ))}
-            </ul>
+            {canInvite && team.invites.length > 0 && (
+              <div className="border-t border-line pt-3">
+                <p className="text-xs font-semibold text-muted">초대 대기 {team.invites.length}</p>
+                <ul aria-label={`초대 대기 ${team.invites.length}`} className="flex flex-col divide-y divide-line">
+                  {team.invites.map((inv) => (
+                    <li key={inv.id} aria-label={inv.email} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed border-line-strong text-muted">
+                        <Mail size={15} />
+                      </span>
+                      <span className="min-w-0 flex-1 truncate font-medium">{inv.email}</span>
+                      <RoleBadge role={inv.role} />
+                      <span className="text-xs text-muted">
+                        {inv.sentAt ? '메일 보냄' : '링크만'} · {dateText(inv.expiresAt)}까지
+                      </span>
+                      <button
+                        className="text-xs text-ink-2 underline"
+                        onClick={async () => {
+                          const r = await teamApi.resend(team.id, inv.id)
+                          setResults([r])
+                          await load()
+                        }}
+                      >
+                        다시 보내기
+                      </button>
+                      <button
+                        className="text-xs text-danger"
+                        onClick={async () => {
+                          await teamApi.revoke(team.id, inv.id)
+                          await load()
+                        }}
+                      >
+                        취소
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </Section>
         )}
 
@@ -413,7 +438,8 @@ export function TeamView() {
           </Section>
         )}
 
-        {tab === 'members' && team.role !== 'owner' && (
+        {/* An owner may leave once someone else is an owner too. */}
+        {tab === 'members' && (team.role !== 'owner' || team.memberList.filter((x) => x.role === 'owner').length > 1) && (
           <div className="flex flex-col gap-2">
             {!leaving ? (
               <button className="self-start text-sm text-danger hover:underline" onClick={() => setLeaving(true)}>

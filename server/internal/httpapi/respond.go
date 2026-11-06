@@ -34,6 +34,8 @@ func writeStoreError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, store.ErrConflict):
 		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, store.ErrLastOwner):
+		writeError(w, http.StatusBadRequest, "팀에는 owner가 한 명은 있어야 해요")
 	case errors.Is(err, store.ErrForbidden):
 		writeError(w, http.StatusForbidden, "권한이 없어요")
 	case errors.Is(err, store.ErrInvalid):

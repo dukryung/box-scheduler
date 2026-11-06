@@ -47,7 +47,7 @@ func (a *API) audioMeeting(w http.ResponseWriter, r *http.Request, edit bool) (s
 		return "", m, false
 	}
 	if edit && !canEditMeeting(role, currentUser(r).ID, m) {
-		writeError(w, http.StatusForbidden, "회의를 만든 사람과 매니저만 녹음할 수 있어요")
+		writeError(w, http.StatusForbidden, "회의를 만든 사람과 manager만 녹음할 수 있어요")
 		return "", m, false
 	}
 	return teamID, m, true

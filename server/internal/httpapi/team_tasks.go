@@ -176,7 +176,7 @@ func (a *API) createTeamTask(w http.ResponseWriter, r *http.Request) {
 	if store.RoleRank(role) < store.RoleRank("manager") {
 		for _, x := range assignees {
 			if x.UserID != me {
-				writeError(w, http.StatusForbidden, "일반 멤버는 본인만 담당자로 지정할 수 있어요")
+				writeError(w, http.StatusForbidden, "member는 본인만 담당자로 지정할 수 있어요")
 				return
 			}
 		}
@@ -241,7 +241,7 @@ func (a *API) updateTeamTask(w http.ResponseWriter, r *http.Request) {
 			}
 			for _, x := range assignees {
 				if x.UserID != me && !isAssigned(x.UserID, cur) {
-					writeError(w, http.StatusForbidden, "일반 멤버는 본인만 담당자로 지정할 수 있어요")
+					writeError(w, http.StatusForbidden, "member는 본인만 담당자로 지정할 수 있어요")
 					return
 				}
 				if x.UserID == me {
