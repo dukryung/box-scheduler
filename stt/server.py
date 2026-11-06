@@ -1,15 +1,17 @@
-"""Meeting transcription for Box Scheduler, run on the Mac mini.
+"""Meeting transcription for Box Scheduler, run on the Mac mini or a Linux server.
 
-Whisper (large-v3-turbo on Apple's GPU through MLX) writes down what was said,
-and sherpa-onnx (pyannote segmentation + a speaker embedding model) tells the
-speakers apart. Jobs run one at a time; the API polls for the result.
+Whisper (large-v3-turbo; on Apple's GPU through MLX on a Mac, on the CPU through
+faster-whisper elsewhere) writes down what was said, and sherpa-onnx (pyannote
+segmentation + a speaker embedding model) tells the speakers apart. Jobs run one
+at a time; the API polls for the result.
 
   POST   /v1/jobs?language=ko&speakers=3&prompt=...   body: the audio file
   GET    /v1/jobs/{id}      status, stage, and when done the segments
   DELETE /v1/jobs/{id}
   GET    /health
 
-It listens on 127.0.0.1 only; the API reaches it through the SSH tunnel.
+It listens on 127.0.0.1 unless STT_HOST says otherwise; on the Mac mini the API
+reaches it through the SSH tunnel.
 """
 
 import json
@@ -33,7 +35,10 @@ HOST = os.environ.get("STT_HOST", "127.0.0.1")
 PORT = int(os.environ.get("STT_PORT", "11435"))
 HERE = os.path.dirname(os.path.abspath(__file__))
 MODELS = os.environ.get("STT_MODELS", os.path.join(HERE, "models"))
-WHISPER = os.environ.get("STT_WHISPER", "mlx-community/whisper-large-v3-turbo")
+# mlx (Apple Silicon) | faster (CPU, faster-whisper)
+BACKEND = os.environ.get("STT_BACKEND", "mlx" if sys.platform == "darwin" else "faster")
+WHISPER = os.environ.get("STT_WHISPER", "mlx-community/whisper-large-v3-turbo" if BACKEND == "mlx" else "large-v3-turbo")
+THREADS = int(os.environ.get("STT_THREADS", "0"))  # faster-whisper's CPU threads; 0 is its own choice
 SEGMENTATION = os.path.join(MODELS, "sherpa-onnx-pyannote-segmentation-3-0", "model.onnx")
 EMBEDDING = os.path.join(MODELS, os.environ.get("STT_EMBEDDING", "3dspeaker_speech_eres2net_base_sv_zh-cn_3dspeaker_16k.onnx"))
 FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
@@ -110,6 +115,8 @@ def diarize(samples, speakers):
 
 
 def transcribe(samples, language, prompt):
+    if BACKEND == "faster":
+        return transcribe_cpu(samples, language, prompt)
     import mlx_whisper
 
     return mlx_whisper.transcribe(
@@ -122,6 +129,35 @@ def transcribe(samples, language, prompt):
         condition_on_previous_text=False,
         hallucination_silence_threshold=2.0,
     )
+
+
+def transcribe_cpu(samples, language, prompt):
+    """The same as transcribe, through faster-whisper, in mlx-whisper's shape."""
+    from faster_whisper import WhisperModel
+
+    model = WhisperModel(WHISPER, device="cpu", compute_type="int8", cpu_threads=THREADS)
+    segments, info = model.transcribe(
+        samples,
+        language=language or None,
+        initial_prompt=prompt or None,
+        word_timestamps=True,
+        condition_on_previous_text=False,
+        hallucination_silence_threshold=2.0,
+    )
+    return {
+        "language": info.language,
+        "segments": [
+            {
+                "start": s.start,
+                "end": s.end,
+                "text": s.text,
+                "no_speech_prob": s.no_speech_prob,
+                "avg_logprob": s.avg_logprob,
+                "words": [{"word": w.word, "start": w.start, "end": w.end} for w in s.words or []],
+            }
+            for s in segments
+        ],
+    }
 
 
 def speaker_at(turns, start, end):
@@ -382,5 +418,5 @@ if __name__ == "__main__":
         sys.exit(0)
     threading.Thread(target=worker, daemon=True).start()
     threading.Thread(target=sweep, daemon=True).start()
-    print(f"box-stt on {HOST}:{PORT}, whisper {WHISPER}", flush=True)
+    print(f"box-stt on {HOST}:{PORT}, whisper {WHISPER} ({BACKEND})", flush=True)
     ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()

@@ -130,6 +130,7 @@ Claude는 정해진 편집(블록 추가·이동·수정·삭제, Brain Dump 추
 - **녹음**: 브라우저가 15초 조각으로 바로 올린다(`MEETING_AUDIO_DIR`, Docker 볼륨 `meeting-audio`). 브라우저 음성 인식이 실시간 자막을 회의 내용에 30초마다 저장한다. 마이크는 `https` 주소나 `localhost`에서만 켜진다.
 - **받아쓰기(화자 분리)**: 녹음이 끝나면 Mac mini가 Whisper large-v3-turbo(MLX, GPU)로 다시 받아쓰고, sherpa-onnx(pyannote segmentation + 3D-Speaker)로 화자를 나눈다. 회의 녹음 1분에 약 15~20초, 1시간이면 15분쯤 걸린다. "화자 1·2…"가 누구인지 고른 뒤 "회의 내용으로 쓰기"를 누르면 `이름: 말` 줄이 되어, AI가 할 일을 그 사람에게 준다. "끝내고 AI로 정리"는 받아쓰기가 끝나는 대로 회의록까지 이어서 만든다. 녹음 파일은 우리 서버와 Mac mini에만 가고, Mac mini에서는 처리 후 지운다.
 - **Mac mini 받아쓰기 서버 설치** (`stt/`): Mac mini에서 `cd stt && ./install.sh`를 실행한다. 모델 약 1.7GB를 받고, `~/box-stt`에 설치하며, 로그인할 때 `127.0.0.1:11435`로 켜지는 LaunchAgent(`com.boxscheduler.stt`)를 등록한다. 이 MacBook의 SSH 터널에 `-L 127.0.0.1:11435:127.0.0.1:11435`를 더하고 `.env`에 `STT_URL=http://host.docker.internal:11435`를 넣는다. `STT_URL`이 비어 있으면 실시간 자막만 쓴다.
+- **GPU 없는 리눅스 서버에 받아쓰기 설치** (`stt/Dockerfile`): Whisper를 CPU(faster-whisper, int8)로 돌린다. 모델은 이미지에 들어 있어 실행 중에는 인터넷이 필요 없다. `docker build -t box-stt stt` 후 `docker run -d --name box-stt --restart unless-stopped -p <사내망 IP>:11435:11435 box-stt`로 띄우고, 같은 네트워크의 `.env`에 `STT_URL=http://<사내망 IP>:11435`를 넣는다. 인증이 없으니 사내망 IP에만 연다. 사내 서버 107(Ryzen 9 7900X)에서는 32초짜리 녹음이 12초 걸렸다.
 
 ### 관리자 콘솔 (http://localhost:3090)
 
