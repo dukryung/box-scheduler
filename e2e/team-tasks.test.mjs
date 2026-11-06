@@ -193,7 +193,7 @@ try {
   await ph.getByRole('list', { name: '업무 목록' }).waitFor()
   check((await ph.getByRole('group', { name: '보기 방식' }).count()) === 0, 'phone: list only (no board switch)')
   check(await ph.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), 'phone: no sideways scroll')
-  await ph.getByRole('button', { name: '팀 설정' }).tap()
+  await ph.getByRole('banner').getByRole('link', { name: '팀 설정' }).tap()
   await ph.getByRole('region', { name: /멤버 3/ }).waitFor()
   check(true, 'phone: members open from 팀 설정')
 

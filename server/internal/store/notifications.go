@@ -193,29 +193,87 @@ func (s *Store) ClaimReminders(ctx context.Context, lead time.Duration) ([]DueRe
 			claimed[id] = at
 		}
 		rows.Close()
-		if err := rows.Err(); err != nil || len(claimed) == 0 {
+		if err := rows.Err(); err != nil {
 			return mapErr(err)
 		}
-		ids := make([]string, 0, len(claimed))
-		for id := range claimed {
-			ids = append(ids, id)
-		}
-		rows, err = tx.Query(ctx, `SELECT id::text, user_id::text, title, date::text, start_slot, end_slot FROM time_blocks WHERE id = ANY($1::uuid[])`, ids)
+		out, err = claimedBlocks(ctx, tx, claimed)
+		return err
+	})
+	return out, err
+}
+
+// ClaimEndReminders finds open blocks of 30 minutes or more that are under way and
+// end within lead, and records them as asked, the same way as ClaimReminders. A
+// block followed straight by another is left out: the next one's reminder speaks.
+// The claimed time is the end, carried in StartsAt.
+func (s *Store) ClaimEndReminders(ctx context.Context, lead time.Duration) ([]DueReminder, error) {
+	var out []DueReminder
+	err := s.inTx(ctx, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			WITH due AS (
+				SELECT b.id,
+				       ((b.date + make_interval(mins => b.start_slot * 10))::timestamp AT TIME ZONE u.timezone) AS starts_at,
+				       ((b.date + make_interval(mins => b.end_slot * 10))::timestamp AT TIME ZONE u.timezone) AS ends_at
+				FROM time_blocks b JOIN users u ON u.id = b.user_id
+				WHERE u.notify_reminders AND u.status = 'active' AND NOT b.done
+				  AND b.end_slot - b.start_slot >= 3
+				  AND b.date BETWEEN current_date - 1 AND current_date + 1
+				  AND NOT EXISTS (
+				    SELECT 1 FROM time_blocks n
+				    WHERE n.user_id = b.user_id AND n.date = b.date AND n.start_slot = b.end_slot AND NOT n.done)
+			)
+			INSERT INTO block_end_reminders (block_id, ends_at)
+			SELECT id, ends_at FROM due
+			WHERE starts_at <= now() AND ends_at > now() AND ends_at <= now() + make_interval(secs => $1)
+			ON CONFLICT DO NOTHING
+			RETURNING block_id::text, ends_at`, lead.Seconds())
 		if err != nil {
 			return mapErr(err)
 		}
-		defer rows.Close()
+		claimed := map[string]time.Time{}
 		for rows.Next() {
-			var d DueReminder
-			if err := rows.Scan(&d.BlockID, &d.UserID, &d.Title, &d.Date, &d.StartSlot, &d.EndSlot); err != nil {
+			var id string
+			var at time.Time
+			if err := rows.Scan(&id, &at); err != nil {
+				rows.Close()
 				return err
 			}
-			d.StartsAt = claimed[d.BlockID]
-			out = append(out, d)
+			claimed[id] = at
 		}
-		return mapErr(rows.Err())
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return mapErr(err)
+		}
+		out, err = claimedBlocks(ctx, tx, claimed)
+		return err
 	})
 	return out, err
+}
+
+// claimedBlocks loads the claimed blocks, each with the time it was claimed at.
+func claimedBlocks(ctx context.Context, tx pgx.Tx, claimed map[string]time.Time) ([]DueReminder, error) {
+	if len(claimed) == 0 {
+		return nil, nil
+	}
+	ids := make([]string, 0, len(claimed))
+	for id := range claimed {
+		ids = append(ids, id)
+	}
+	rows, err := tx.Query(ctx, `SELECT id::text, user_id::text, title, date::text, start_slot, end_slot FROM time_blocks WHERE id = ANY($1::uuid[])`, ids)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	defer rows.Close()
+	var out []DueReminder
+	for rows.Next() {
+		var d DueReminder
+		if err := rows.Scan(&d.BlockID, &d.UserID, &d.Title, &d.Date, &d.StartSlot, &d.EndSlot); err != nil {
+			return nil, err
+		}
+		d.StartsAt = claimed[d.BlockID]
+		out = append(out, d)
+	}
+	return out, mapErr(rows.Err())
 }
 
 // IsNotFound reports whether err is the store's not-found.

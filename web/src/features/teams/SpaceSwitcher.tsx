@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router'
+import { Gear } from '../../components/icons'
 import { todayISO } from '../../lib/date'
 import { useTeams } from '../../store/teamsStore'
 
-/** "내 공간 ▾": switch between the personal space and the teams. */
+/** "내 공간 ▾": switch between the personal space and the teams; in a team, a gear beside it opens the team's settings. */
 export function SpaceSwitcher() {
   const { teams, loaded, load } = useTeams()
   const [open, setOpen] = useState(false)
@@ -24,6 +25,7 @@ export function SpaceSwitcher() {
 
   const item = 'flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-sm hover:bg-subtle'
   return (
+    <div className="flex items-center gap-1">
     <div ref={ref} className="relative">
       <button
         aria-haspopup="menu"
@@ -56,5 +58,24 @@ export function SpaceSwitcher() {
         </div>
       )}
     </div>
+      {current && <TeamSettingsLink teamId={current.id} />}
+    </div>
+  )
+}
+
+/** The gear that opens a team's settings (members, invites, the team itself). */
+export function TeamSettingsLink({ teamId, className = '' }: { teamId: string; className?: string }) {
+  const location = useLocation()
+  const here = location.pathname === `/team/${teamId}` && /[?&]tab=(settings|members)\b|[?&]invite=/.test(location.search)
+  return (
+    <Link
+      to={`/team/${teamId}?tab=settings`}
+      aria-label="팀 설정"
+      title="팀 설정"
+      aria-current={here ? 'page' : undefined}
+      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] ${here ? 'bg-ink text-surface' : 'text-muted hover:bg-subtle hover:text-ink'} ${className}`}
+    >
+      <Gear size={17} />
+    </Link>
   )
 }

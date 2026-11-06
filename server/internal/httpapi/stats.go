@@ -13,6 +13,8 @@ import (
 const (
 	maxStatsDays  = 366
 	topTasksLimit = 8
+	// streakDays is how far back a run of finished days is counted.
+	streakDays = 90
 )
 
 type boxCount struct {
@@ -53,6 +55,8 @@ type statsResponse struct {
 	Hourly    []hourlyStat   `json:"hourly"`
 	TopTasks  []taskStat     `json:"topTasks"`
 	BrainDump map[string]int `json:"brainDump"` // item count by status
+	// Streak is how many planned days in a row up to To had everything done.
+	Streak int `json:"streak"`
 }
 
 func (a *API) getStats(w http.ResponseWriter, r *http.Request) {
@@ -85,9 +89,16 @@ func (a *API) getStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	recent, err := a.store.ListBlocks(r.Context(), uid, to.AddDate(0, 0, -(streakDays-1)).Format(dateLayout), toS)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+
 	resp := computeStats(blocks, from, to)
 	resp.BrainDump = counts
 	resp.Previous = sumBoxes(prevBlocks)
+	resp.Streak = finishStreak(recent, to)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -175,4 +186,33 @@ func sumBoxes(blocks []store.Block) boxCount {
 		}
 	}
 	return c
+}
+
+// finishStreak counts the days in a row, back from to, on which every planned block
+// was done. Days with nothing planned are passed over, and to itself only counts once
+// finished, so a day still under way does not end the run.
+func finishStreak(blocks []store.Block, to time.Time) int {
+	type tally struct{ planned, done int }
+	days := map[string]tally{}
+	for _, b := range blocks {
+		t := days[b.Date]
+		t.planned++
+		if b.Done {
+			t.done++
+		}
+		days[b.Date] = t
+	}
+	n := 0
+	for i := 0; i < streakDays; i++ {
+		t, ok := days[to.AddDate(0, 0, -i).Format(dateLayout)]
+		switch {
+		case !ok:
+		case t.done == t.planned:
+			n++
+		case i == 0:
+		default:
+			return n
+		}
+	}
+	return n
 }

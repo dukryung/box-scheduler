@@ -146,8 +146,11 @@ func (n *Notifier) push(userID string, note store.Notification) {
 	}
 }
 
-// RunReminders checks every `every` for blocks starting within `lead` and
-// notifies their owners, until ctx ends.
+// endLead is how long before a block ends its owner is asked whether it is done.
+const endLead = 5 * time.Minute
+
+// RunReminders checks every `every` for blocks starting within `lead`, and for
+// blocks under way ending within endLead, and notifies their owners, until ctx ends.
 func (n *Notifier) RunReminders(ctx context.Context, every, lead time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
@@ -167,6 +170,22 @@ func (n *Notifier) RunReminders(ctx context.Context, every, lead time.Duration) 
 			})
 			if err != nil {
 				slog.Error("reminder", "err", err)
+			}
+		}
+		ending, err := n.store.ClaimEndReminders(ctx, endLead)
+		if err != nil && ctx.Err() == nil {
+			slog.Error("end reminders", "err", err)
+		}
+		for _, d := range ending {
+			mins := int(time.Until(d.StartsAt).Round(time.Minute).Minutes())
+			_, err := n.Notify(ctx, d.UserID, store.Notification{
+				Kind:  "ending",
+				Title: fmt.Sprintf("%d분 뒤 끝나요: %s", max(mins, 1), d.Title),
+				Body:  "끝냈다면 시간표에서 완료로 표시해요",
+				Link:  "/day/" + d.Date,
+			})
+			if err != nil {
+				slog.Error("end reminder", "err", err)
 			}
 		}
 		if time.Since(prune) > 24*time.Hour {

@@ -7,6 +7,7 @@ import {
   SLOTS_PER_HOUR,
   clamp,
   fitRange,
+  formatDuration,
   formatRange,
   isFree,
   nextBoundary,
@@ -60,6 +61,9 @@ interface Props {
   ghosts: GhostBlock[]
   /** Scroll to this block and flash it; `n` changes on every request. */
   focus: { id: string; n: number } | null
+  /** An empty stretch between blocks to offer filling, if any. */
+  gap?: SlotRange | null
+  onGapClick?: (range: SlotRange, at: GridAnchor) => void
 }
 
 const toRange = (b: Block): SlotRange => ({ start: b.startSlot, end: b.endSlot })
@@ -76,6 +80,8 @@ export function TimeGrid({
   onItemDrop,
   ghosts,
   focus,
+  gap = null,
+  onGapClick,
 }: Props) {
   const cellsRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -129,6 +135,7 @@ export function TimeGrid({
     if (e.button !== 0) return
     const target = e.target as HTMLElement
     const slot = slotFromPoint(e.clientX, e.clientY)
+    if (target.closest('[data-gap]')) return // the fill button handles its own click
     const blockId = target.closest<HTMLElement>('[data-block-id]')?.dataset.blockId
 
     if (blockId) {
@@ -279,6 +286,30 @@ export function TimeGrid({
                 지금 {slotToTime(nowSlot)}
               </div>
             )}
+
+            {gap &&
+              onGapClick &&
+              dropBoxes === null &&
+              !drag &&
+              ghosts.length === 0 &&
+              rowSegments(gap).map((seg, i, segs) => (
+                <div
+                  key={`gap-${seg.row}`}
+                  style={{ gridRow: seg.row + 1, gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 1}` }}
+                  className="pointer-events-none z-10 m-[3px] flex items-center justify-center rounded-xl border-[1.5px] border-dashed border-line-strong"
+                >
+                  {i === widestSegment(segs) && (
+                    <button
+                      type="button"
+                      data-gap
+                      onClick={(e) => onGapClick(gap, { x: e.clientX, y: e.clientY })}
+                      className="pointer-events-auto flex max-w-full items-center gap-1 truncate rounded-full bg-surface px-2.5 py-0.5 text-[11px] font-semibold text-muted shadow-[0_1px_2px_rgba(28,25,23,0.08)] hover:text-accent md:text-xs"
+                    >
+                      빈 {formatDuration(gap.end - gap.start)} · 채우기
+                    </button>
+                  )}
+                </div>
+              ))}
 
             {dropBoxes !== null &&
               dropRange &&

@@ -3,7 +3,7 @@ import { teamApi } from '../../api/client'
 import type { TeamDetail, TeamTask, TeamTaskInput, TeamTaskStatus } from '../../api/types'
 import { ConfirmInline } from '../../components/ConfirmInline'
 import { Close, Plus, Sparkle, Trash } from '../../components/icons'
-import { aiOutlineButton, card, doneStrike, primaryButton, secondaryButton } from '../../components/styles'
+import { aiOutlineButton, card, doneText, primaryButton, secondaryButton } from '../../components/styles'
 import { todayISO } from '../../lib/date'
 import { formatDuration } from '../../lib/slots'
 import { STATUS_LABEL, STATUS_TONE, STATUSES, periodText } from '../../lib/teamTasks'
@@ -261,7 +261,7 @@ export function TeamTasks({ team, meId }: { team: TeamDetail; meId: string }) {
             <li key={t.id} aria-label={t.title} className="flex flex-col gap-2 px-4 py-3">
               <div className="flex flex-col gap-1.5 md:flex-row md:items-center md:gap-3">
                 <button onClick={() => setEditing(t)} className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left">
-                  <span className={`text-[15px] font-medium md:text-sm ${t.status === 'done' ? `${doneStrike} text-muted` : ''}`}>{t.title}</span>
+                  <span className={`text-[15px] font-medium md:text-sm ${t.status === 'done' ? doneText : ''}`}>{t.title}</span>
                   <Meta task={t} today={today} />
                 </button>
                 <div className="flex items-center justify-between gap-3 md:justify-end">
@@ -310,7 +310,7 @@ export function TeamTasks({ team, meId }: { team: TeamDetail; meId: string }) {
                   >
                     <div className="flex items-start gap-1">
                       <button onClick={() => setEditing(t)} className="flex min-w-0 flex-1 flex-col items-start gap-1 text-left">
-                        <span className={`text-sm font-medium ${t.status === 'done' ? `${doneStrike} text-muted` : ''}`}>{t.title}</span>
+                        <span className={`text-sm font-medium ${t.status === 'done' ? doneText : ''}`}>{t.title}</span>
                         <Meta task={t} today={today} />
                       </button>
                       {trashButton(t)}
@@ -597,7 +597,7 @@ export function TaskEditor({ team, meId, task: given, onClose, onSaved, onChange
                     return (
                       <li key={x.id} aria-label={x.title} className="flex items-center gap-2 px-3 py-2 text-sm">
                         <StatusPill status={x.status} />
-                        <span className={`min-w-0 flex-1 truncate ${x.status === 'done' ? `${doneStrike} text-muted` : ''}`}>{x.title}</span>
+                        <span className={`min-w-0 flex-1 truncate ${x.status === 'done' ? doneText : ''}`}>{x.title}</span>
                         <span className="shrink-0 font-mono text-xs text-muted">
                           {x.doneBoxes > 0 ? `${formatDuration(Math.min(x.doneBoxes, x.boxes))} / ` : ''}
                           {formatDuration(x.boxes)}

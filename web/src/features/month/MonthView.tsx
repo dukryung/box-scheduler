@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { api } from '../../api/client'
 import type { Block, CalendarDay, CalendarMonth } from '../../api/types'
-import { ChevronLeft, ChevronRight, Flag } from '../../components/icons'
-import { card, doneStrike, iconButton } from '../../components/styles'
+import { Check, ChevronLeft, ChevronRight, Flag } from '../../components/icons'
+import { card, iconButton } from '../../components/styles'
 import { WEEKDAYS, addMonths, formatMonthTitle, monthGrid, monthOf, parseISODate, todayISO } from '../../lib/date'
 import { slotToTime } from '../../lib/slots'
 import { hm } from '../../lib/hm'
 import { useIsMobile } from '../../lib/useIsMobile'
-import { TONE_CLASS, toneVars } from '../day/colors'
+import { DEFAULT_BLOCK_COLOR } from '../day/colors'
 import { BottomTabs, TopBar, ViewSwitch } from '../nav/ViewSwitch'
 
 const weekdayColor = (i: number) => (i === 0 ? 'text-danger' : i === 6 ? 'text-[#1d5fc4] dark:text-[#7fb0ff]' : '')
@@ -52,12 +52,12 @@ export function MonthView({ month }: { month: string }) {
   return (
     <div className="flex min-h-dvh flex-col bg-ground text-ink md:h-dvh">
       <TopBar>
-        <div className="flex flex-1 items-center gap-1 md:flex-none">
+        <div className="flex min-w-0 flex-1 items-center gap-0.5 md:flex-none md:gap-1">
           <button onClick={() => navigate(`/month/${addMonths(month, -1)}`)} className={iconButton} aria-label="이전 달">
             <ChevronLeft size={18} />
           </button>
-          <div className="flex flex-1 flex-col items-center md:flex-none md:px-2.5">
-            <h1 className="text-[17px] font-semibold tracking-tight md:text-lg">{formatMonthTitle(month)}</h1>
+          <div className="flex min-w-0 flex-1 flex-col items-center md:flex-none md:px-2.5">
+            <h1 className="text-[17px] font-semibold tracking-tight whitespace-nowrap md:text-lg">{formatMonthTitle(month)}</h1>
             <span className="text-xs text-muted md:hidden">
               {rate === null ? '계획 없음' : `완료율 ${rate}% · 계획 ${hm(totals.planned)}`}
             </span>
@@ -68,7 +68,7 @@ export function MonthView({ month }: { month: string }) {
           {!isCurrentMonth && (
             <button
               onClick={() => navigate(`/month/${monthOf(today)}`)}
-              className="ml-1.5 h-9 shrink-0 rounded-[10px] border border-line px-3 text-sm text-ink-2 hover:bg-subtle"
+              className="ml-1 h-8 shrink-0 rounded-[10px] border border-line px-2.5 text-xs text-ink-2 hover:bg-subtle md:ml-1.5 md:h-9 md:px-3 md:text-sm"
             >
               이번 달
             </button>
@@ -198,11 +198,18 @@ function DayCell({ iso, lastRow, inMonth, isToday, day, dues }: CellProps) {
             {day.items.map((it, i) => (
               <li
                 key={i}
-                style={toneVars(it.color)}
-                className={`${TONE_CLASS} flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-[3px] text-xs font-medium`}
+                className={`flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-[3px] text-xs font-medium ${it.done ? 'bg-done-soft text-done-ink' : 'bg-subtle text-ink-2'}`}
               >
-                <span className="shrink-0 font-mono text-[11px] opacity-80">{slotToTime(it.startSlot)}</span>
-                <span className={`truncate ${it.done ? doneStrike : ''}`}>{it.title}</span>
+                {it.done ? (
+                  <>
+                    <Check size={11} strokeWidth={3} className="shrink-0" />
+                    <span className="sr-only">완료</span>
+                  </>
+                ) : (
+                  <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: it.color ?? DEFAULT_BLOCK_COLOR }} />
+                )}
+                <span className="shrink-0 font-mono text-[11px] opacity-75">{slotToTime(it.startSlot)}</span>
+                <span className={`truncate ${it.done ? 'font-semibold' : ''}`}>{it.title}</span>
               </li>
             ))}
             {more > 0 && <li className="pl-1.5 text-xs text-muted">+{more}개 더</li>}
@@ -210,7 +217,7 @@ function DayCell({ iso, lastRow, inMonth, isToday, day, dues }: CellProps) {
 
           {day.plannedBoxes > 0 && day.doneBoxes > 0 && (
             <span className="mt-auto block h-1 rounded-full bg-subtle" title={`완료 ${day.doneBoxes} / 계획 ${day.plannedBoxes} 박스`}>
-              <span className="block h-1 rounded-full bg-accent-bright" style={{ width: `${(day.doneBoxes / day.plannedBoxes) * 100}%` }} />
+              <span className="block h-1 rounded-full bg-done" style={{ width: `${(day.doneBoxes / day.plannedBoxes) * 100}%` }} />
             </span>
           )}
         </>
@@ -251,7 +258,7 @@ function MobileDayCell({ iso, inMonth, isToday, selected, day, dues, onSelect }:
       <span className="flex h-[5px] gap-[3px]">
         {dues && <span className="h-[5px] w-[5px] rounded-[1px] bg-danger" aria-hidden="true" />}
         {day?.items.map((it, i) => (
-          <span key={i} className="h-[5px] w-[5px] rounded-full" style={{ backgroundColor: it.color ?? 'var(--app-accent)' }} />
+          <span key={i} className="h-[5px] w-[5px] rounded-full" style={{ backgroundColor: it.done ? 'var(--color-done)' : (it.color ?? DEFAULT_BLOCK_COLOR) }} />
         ))}
       </span>
     </button>
@@ -298,8 +305,15 @@ function Agenda({ date, dues }: { date: string; dues: string[] | undefined }) {
             <span className="w-[84px] shrink-0 font-mono text-xs text-muted">
               {slotToTime(b.startSlot)}–{slotToTime(b.endSlot)}
             </span>
-            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: b.color ?? 'var(--app-accent)' }} />
-            <span className={`truncate text-sm ${b.done ? `text-faint ${doneStrike}` : 'font-medium'}`}>{b.title}</span>
+            {b.done ? (
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-done text-done-on">
+                <Check size={10} strokeWidth={3.4} />
+                <span className="sr-only">완료</span>
+              </span>
+            ) : (
+              <span className="mx-1 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: b.color ?? DEFAULT_BLOCK_COLOR }} />
+            )}
+            <span className={`truncate text-sm ${b.done ? 'font-semibold text-done-ink' : 'font-medium'}`}>{b.title}</span>
           </li>
         ))}
       </ul>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { OVERLAP_MESSAGE, api } from '../../api/client'
-import type { AssistantOp } from '../../api/types'
+import type { AssistantOp, Block } from '../../api/types'
 import { Check, ChevronLeft, ChevronRight, Flag, Mic, Plus } from '../../components/icons'
 import { card, iconButton } from '../../components/styles'
 import { WEEKDAYS, addDays, parseISODate, todayISO } from '../../lib/date'
@@ -10,18 +10,21 @@ import { useIsMobile } from '../../lib/useIsMobile'
 import { useDayStore } from '../../store/dayStore'
 import { useTasksStore } from '../../store/tasksStore'
 import { deadlineCounts } from '../../lib/backlog'
+import { firstFreeStart, nextGap, sameOrNextStart } from '../../lib/dayGaps'
 import { BacklogPanel } from '../tasks/BacklogPanel'
 import { AIPanel } from '../ai/AIPanel'
 import { useAISuggestion } from '../ai/useAISuggestion'
 import { AssistantBar, AssistantPanel } from '../assistant/Assistant'
 import { useAssistant } from '../assistant/useAssistant'
 import { BrainDumpPanel } from '../braindump/BrainDumpPanel'
-import type { DraggedItem } from '../braindump/drop'
+import { dropBoxes, type DraggedItem } from '../braindump/drop'
 import { PlaceSheet } from '../braindump/PlaceSheet'
 import { BottomTabs, TopBar, ViewSwitch } from '../nav/ViewSwitch'
 import { BlockPopover } from './BlockPopover'
 import { DEFAULT_BLOCK_COLOR } from './colors'
 import { DaySummary } from './DaySummary'
+import { GapPicker, type GapChoice } from './GapPicker'
+import { LateStrip } from './LateStrip'
 import { TimeGrid, type GhostBlock, type GridAnchor } from './TimeGrid'
 
 type Popover = { mode: 'create'; range: SlotRange; at: GridAnchor } | { mode: 'edit'; id: string; at: GridAnchor }
@@ -48,6 +51,7 @@ export function DayView({ date }: { date: string }) {
   const [popover, setPopover] = useState<Popover | null>(null)
   const [dragged, setDragged] = useState<DraggedItem | null>(null)
   const [placing, setPlacing] = useState<DraggedItem | null>(null)
+  const [gapPick, setGapPick] = useState<{ range: SlotRange; at: GridAnchor } | null>(null)
   const [aiOpen, setAiOpen] = useState(false)
   const [mobileTab, setMobileTab] = useState<'grid' | 'braindump' | 'backlog'>('grid')
   const [sideTab, setSideTab] = useState<'braindump' | 'backlog'>('braindump')
@@ -63,7 +67,7 @@ export function DayView({ date }: { date: string }) {
   const resetAssistant = assistant.reset
   const nowSlot = useNowSlot()
   const isToday = date === todayISO()
-  const [cheer, setCheer] = useState<{ title: string; from: number; to: number } | null>(null)
+  const [cheer, setCheer] = useState<{ id: string; title: string; from: number; to: number } | null>(null)
   const seenDone = useRef<{ date: string; done: Map<string, boolean> } | null>(null)
   const d = parseISODate(date)
 
@@ -71,6 +75,7 @@ export function DayView({ date }: { date: string }) {
   useEffect(() => {
     setPopover(null)
     setPlacing(null)
+    setGapPick(null)
     resetAssistant()
     void setDate(date)
   }, [date, setDate, resetAssistant])
@@ -85,17 +90,37 @@ export function DayView({ date }: { date: string }) {
     return () => clearTimeout(id)
   }, [undoable])
 
-  // ⌘K / Ctrl+K jumps to the request bar on desktop.
+  // ⌘K / Ctrl+K jumps to the request bar on desktop. Outside text fields and dialogs:
+  // ←/→ the day before/after, T today, N a new Brain Dump entry, Space finishes what is on now.
+  const keys = useRef({ date, current: undefined as string | undefined })
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         assistantInputRef.current?.focus()
+        return
       }
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return
+      const el = e.target as HTMLElement
+      if (el.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"]')) return
+      if (document.querySelector('[role="dialog"]')) return
+      if (e.key === ' ' && el.closest('button, a')) return // Space presses the focused button
+      const { date, current } = keys.current
+      const act: Record<string, () => void> = {
+        ArrowLeft: () => navigate(`/day/${addDays(date, -1)}`),
+        ArrowRight: () => navigate(`/day/${addDays(date, 1)}`),
+        t: () => navigate(`/day/${todayISO()}`),
+        n: () => inputRef.current?.focus(),
+        ' ': () => current && void updateBlock(current, { done: true }),
+      }
+      const run = act[e.key.length === 1 ? e.key.toLowerCase() : e.key]
+      if (!run || (e.key === ' ' && !current)) return
+      e.preventDefault()
+      run()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [navigate, updateBlock])
 
   useEffect(() => {
     if (!error) return
@@ -113,12 +138,17 @@ export function DayView({ date }: { date: string }) {
     const planned = blocks.reduce((n, b) => n + b.endSlot - b.startSlot, 0)
     const done = blocks.reduce((n, b) => n + (b.done ? b.endSlot - b.startSlot : 0), 0)
     const share = (boxes: number) => (planned ? Math.round((boxes / planned) * 100) : 0)
-    setCheer({ title: finished.title, from: share(done - (finished.endSlot - finished.startSlot)), to: share(done) })
+    setCheer({ id: finished.id, title: finished.title, from: share(done - (finished.endSlot - finished.startSlot)), to: share(done) })
   }, [blocks, date])
+
+  // A newer message takes the toast's place.
+  useEffect(() => {
+    if (notice || error) setCheer(null)
+  }, [notice, error])
 
   useEffect(() => {
     if (!cheer) return
-    const id = setTimeout(() => setCheer(null), 2600)
+    const id = setTimeout(() => setCheer(null), 4000)
     return () => clearTimeout(id)
   }, [cheer])
 
@@ -186,6 +216,10 @@ export function DayView({ date }: { date: string }) {
   const closePlacing = useCallback(() => setPlacing(null), [])
 
   const occupied = blocks.map((b) => ({ start: b.startSlot, end: b.endSlot }))
+  keys.current = {
+    date,
+    current: isToday ? blocks.find((b) => !b.done && b.startSlot <= nowSlot && nowSlot < b.endSlot)?.id : undefined,
+  }
   const editingBlock = popover?.mode === 'edit' ? blocks.find((b) => b.id === popover.id) : undefined
   // Items still without a time today ("미배정"), counted on the Brain Dump tab.
   const unscheduledItems = brainDump.filter((it) => it.status === 'open' && !blocks.some((b) => b.brainDumpId === it.id)).length
@@ -201,6 +235,55 @@ export function DayView({ date }: { date: string }) {
     })
     // Backlog items show progress across days; refresh it.
     if (item.item.date === null) void loadBacklog()
+  }
+
+  // Blocks left behind today, and where the first could still go.
+  const late = isToday ? blocks.filter((b) => !b.done && b.endSlot <= nowSlot).sort((a, b) => a.startSlot - b.startSlot) : []
+  const laterStart = late[0]
+    ? firstFreeStart(
+        late[0].endSlot - late[0].startSlot,
+        blocks.filter((b) => b.id !== late[0].id).map((b) => ({ start: b.startSlot, end: b.endSlot })),
+        nowSlot + 1,
+      )
+    : null
+  const moveLater = (b: Block, start: number) => {
+    void updateBlock(b.id, { startSlot: start, endSlot: start + b.endSlot - b.startSlot })
+    setNotice(`‘${b.title}’을(를) ${slotToTime(start)}로 옮겼어요`)
+  }
+  const moveTomorrow = async (b: Block) => {
+    const tomorrow = addDays(date, 1)
+    try {
+      const next = await api.getDay(tomorrow)
+      const start = sameOrNextStart({ start: b.startSlot, end: b.endSlot }, next.blocks.map((x) => ({ start: x.startSlot, end: x.endSlot })))
+      if (start === null) {
+        setError('내일은 이만큼 빈 시간이 없어요')
+        return
+      }
+      await updateBlock(b.id, { date: tomorrow, startSlot: start, endSlot: start + b.endSlot - b.startSlot })
+      setNotice(`‘${b.title}’을(를) 내일 ${slotToTime(start)}로 옮겼어요`)
+    } catch (e) {
+      setError((e as Error).message)
+    }
+    void reload()
+  }
+
+  // The next empty stretch between today's blocks, and what is waiting to fill it.
+  const gap = nextGap(occupied, isToday ? nowSlot + 1 : 0)
+  const gapChoices: GapChoice[] = [
+    ...brainDump
+      .filter((it) => it.status === 'open' && !blocks.some((b) => b.brainDumpId === it.id))
+      .map((item): GapChoice => ({ item, boxes: dropBoxes(item, 0), from: 'braindump' })),
+    ...backlog
+      .filter((it) => it.status === 'open' && !blocks.some((b) => b.brainDumpId === it.id))
+      .map((item): GapChoice => ({ item, boxes: dropBoxes(item, item.scheduledBoxes), from: 'backlog' })),
+  ].slice(0, 8)
+  const fillGap = (c: GapChoice) => {
+    if (!gapPick) return
+    const { range } = gapPick
+    const end = Math.min(range.start + c.boxes, range.end)
+    setGapPick(null)
+    void scheduleItem(c, { start: range.start, end })
+    setNotice(`${c.item.title}을(를) ${slotToTime(range.start)}에 넣었어요`)
   }
 
   const openBacklogItems = backlog.filter((it) => it.status === 'open').length
@@ -255,25 +338,25 @@ export function DayView({ date }: { date: string }) {
   return (
     <div className="flex h-dvh flex-col bg-ground text-ink">
       <TopBar>
-        <div className="flex flex-1 items-center gap-1 md:flex-none">
-          <button onClick={() => go(addDays(date, -1))} className={iconButton} aria-label="이전 날">
+        <div className="flex min-w-0 flex-1 items-center gap-0.5 md:flex-none md:gap-1">
+          <button onClick={() => go(addDays(date, -1))} className={iconButton} aria-label="이전 날" title="이전 날 (←)">
             <ChevronLeft size={18} />
           </button>
-          <div className="flex flex-1 flex-col items-center md:flex-none md:flex-row md:items-baseline md:gap-2 md:px-2.5">
-            <h1 className="text-[17px] font-semibold tracking-tight md:text-lg">
+          <div className="flex min-w-0 flex-1 flex-col items-center md:flex-none md:flex-row md:items-baseline md:gap-2 md:px-2.5">
+            <h1 className="text-[17px] font-semibold tracking-tight whitespace-nowrap md:text-lg">
               {d.getMonth() + 1}월 {d.getDate()}일
             </h1>
             <span className="text-xs text-muted md:text-sm">
               {WEEKDAYS[d.getDay()]}요일{isToday && <span className="md:hidden"> · 오늘</span>}
             </span>
           </div>
-          <button onClick={() => go(addDays(date, 1))} className={iconButton} aria-label="다음 날">
+          <button onClick={() => go(addDays(date, 1))} className={iconButton} aria-label="다음 날" title="다음 날 (→)">
             <ChevronRight size={18} />
           </button>
           {isToday ? (
             <span className="ml-1.5 hidden rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-semibold text-accent-ink md:inline">오늘</span>
           ) : (
-            <button onClick={() => go(todayISO())} className="ml-1.5 h-9 rounded-[10px] border border-line px-3 text-sm text-ink-2 hover:bg-subtle">
+            <button onClick={() => go(todayISO())} className="ml-1 h-8 shrink-0 rounded-[10px] border border-line px-2.5 text-xs text-ink-2 hover:bg-subtle md:ml-1.5 md:h-9 md:px-3 md:text-sm">
               오늘
             </button>
           )}
@@ -287,7 +370,7 @@ export function DayView({ date }: { date: string }) {
             setAssistantSheet(true)
           }}
           aria-label="말로 요청하기"
-          className="flex h-10 w-10 items-center justify-center rounded-[10px] border border-ai-line text-ai-ink md:hidden"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] border border-ai-line text-ai-ink md:hidden"
         >
           <Mic size={18} />
         </button>
@@ -295,8 +378,15 @@ export function DayView({ date }: { date: string }) {
 
       {/* The AI panel needs the height while it is open. */}
       {!aiOpen && (!mobile || mobileTab === 'grid') && (
-        <div className="px-4 pt-3 md:px-6 md:pt-4">
+        <div className="flex flex-col gap-2 px-4 pt-3 md:px-6 md:pt-4">
           <DaySummary blocks={blocks} isToday={isToday} onFinish={(id) => void updateBlock(id, { done: true })} />
+          <LateStrip
+            late={late}
+            laterStart={laterStart}
+            onDone={(b) => void updateBlock(b.id, { done: true })}
+            onLater={moveLater}
+            onTomorrow={(b) => void moveTomorrow(b)}
+          />
         </div>
       )}
 
@@ -410,6 +500,8 @@ export function DayView({ date }: { date: string }) {
               dropBoxes={dragged?.boxes ?? null}
               ghosts={ghosts}
               focus={focus}
+              gap={aiOpen || popover || placing ? null : gap}
+              onGapClick={(range, at) => setGapPick({ range, at })}
               onItemDrop={(range) => {
                 if (!dragged) return
                 void scheduleItem(dragged, range)
@@ -495,6 +587,21 @@ export function DayView({ date }: { date: string }) {
         />
       )}
 
+      {gapPick && (
+        <GapPicker
+          range={gapPick.range}
+          at={gapPick.at}
+          choices={gapChoices}
+          onPick={fillGap}
+          onClose={() => setGapPick(null)}
+          onNew={() => {
+            const { range, at } = gapPick
+            setGapPick(null)
+            setPopover({ mode: 'create', range: { start: range.start, end: Math.min(range.start + 3, range.end) }, at })
+          }}
+        />
+      )}
+
       {popover?.mode === 'create' && (
         <BlockPopover
           mode="create"
@@ -527,7 +634,7 @@ export function DayView({ date }: { date: string }) {
       {cheer && !error && (
         <div
           role="status"
-          className="toast-in fixed bottom-24 left-1/2 z-50 flex max-w-[calc(100vw-32px)] items-center gap-2.5 rounded-xl bg-ink py-2.5 pr-4 pl-2.5 text-sm text-surface shadow-[0_12px_30px_rgba(28,25,23,0.25)] md:bottom-6"
+          className="toast-in fixed bottom-24 left-1/2 z-50 flex max-w-[calc(100vw-32px)] items-center gap-2.5 rounded-xl bg-ink py-2.5 pr-2 pl-2.5 text-sm text-surface shadow-[0_12px_30px_rgba(28,25,23,0.25)] md:bottom-6"
         >
           <span className="done-pop flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-done-bright text-[#042f2e]">
             <Check size={12} strokeWidth={3.2} />
@@ -538,6 +645,16 @@ export function DayView({ date }: { date: string }) {
               {cheer.from}% → {cheer.to}%
             </b>
           </span>
+          <button
+            onClick={() => {
+              const id = cheer.id
+              setCheer(null)
+              void updateBlock(id, { done: false })
+            }}
+            className="-my-1 shrink-0 rounded-lg px-2.5 py-1.5 font-semibold text-accent-soft hover:bg-white/10"
+          >
+            되돌리기
+          </button>
         </div>
       )}
       {!cheer && (error ?? notice) && (

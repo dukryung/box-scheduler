@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import type { AppNotification } from '../../api/types'
-import { Bell, Close } from '../../components/icons'
+import { Bell, Check, Close } from '../../components/icons'
 import { chime, unlockSound } from '../../lib/chime'
 import { refreshPush } from '../../lib/push'
 import { useNotifications } from '../../store/notificationsStore'
@@ -20,7 +20,7 @@ export function Toaster() {
     const fresh = toasts.filter((t) => !rung.current.has(t.id))
     if (!fresh.length) return
     fresh.forEach((t) => rung.current.add(t.id))
-    chime(fresh.some((t) => t.kind === 'reminder') ? 'reminder' : 'other')
+    chime(fresh.some((t) => t.kind === 'reminder' || t.kind === 'ending') ? 'reminder' : 'other')
   }, [toasts])
 
   // Sound may only start after a click or key press on the page.
@@ -65,7 +65,9 @@ export function Toaster() {
 function Toast({ n }: { n: AppNotification }) {
   const { dismiss, read } = useNotifications()
   const navigate = useNavigate()
-  const ms = n.kind === 'reminder' ? SHOW_MS.reminder : SHOW_MS.other
+  // Timetable notices: a block about to start, or one about to end.
+  const reminder = n.kind === 'reminder' || n.kind === 'ending'
+  const ms = reminder ? SHOW_MS.reminder : SHOW_MS.other
   const [paused, setPaused] = useState(false)
   const left = useRef(ms)
   const started = useRef(0)
@@ -86,7 +88,6 @@ function Toast({ n }: { n: AppNotification }) {
     void read([n.id])
     if (n.link) navigate(n.link)
   }
-  const reminder = n.kind === 'reminder'
   return (
     <div
       role="status"
@@ -95,7 +96,7 @@ function Toast({ n }: { n: AppNotification }) {
       className={`pointer-events-auto relative flex items-start gap-3 overflow-hidden rounded-xl border bg-surface p-3.5 pr-2.5 shadow-lg ${reminder ? 'border-accent/50' : 'border-line'}`}
     >
       <span aria-hidden="true" className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${reminder ? 'bg-accent text-white' : 'bg-accent-soft text-accent-ink'}`}>
-        {reminder ? <span className="text-base leading-none">⏰</span> : <Bell size={16} />}
+        {n.kind === 'ending' ? <Check size={16} strokeWidth={3} /> : reminder ? <span className="text-base leading-none">⏰</span> : <Bell size={16} />}
       </span>
       <button onClick={open} className="flex min-w-0 flex-1 flex-col gap-0.5 text-left">
         <span className="text-sm font-semibold">{n.title}</span>

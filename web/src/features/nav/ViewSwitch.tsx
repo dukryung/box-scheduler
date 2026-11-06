@@ -69,12 +69,12 @@ export function BottomTabs({ view, date }: Props) {
 }
 
 /**
- * White top bar; the logo shows from tablet width up. The theme switch sits at the
- * right end from tablet width up; on phones a view opts in with `phoneTheme`.
+ * White top bar; the logo shows from tablet width up. The account menu always sits at
+ * the right end; the theme switch does from tablet width up, and on phones a view opts in with `phoneTheme`.
  */
 export function TopBar({ children, phoneTheme = false }: { children: ReactNode; phoneTheme?: boolean }) {
   return (
-    <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-line bg-surface/85 px-4 py-3 backdrop-blur-md md:px-6">
+    <header className="sticky top-0 z-20 flex flex-wrap items-center gap-x-2.5 gap-y-2 border-b border-line bg-surface/85 px-4 py-3 backdrop-blur-md md:gap-x-5 md:px-6">
       <Link to={`/day/${todayISO()}`} aria-label="Box Scheduler 홈 (오늘)" title="오늘로 가기" className="hidden items-center gap-2.5 rounded-lg md:flex">
         <Logo />
         <span className="text-base font-bold tracking-tight">Box Scheduler</span>
@@ -85,14 +85,14 @@ export function TopBar({ children, phoneTheme = false }: { children: ReactNode; 
       {children}
       <NotificationBell />
       <ThemeToggle className={phoneTheme ? '' : 'max-md:hidden'} />
-      <AccountButton className={phoneTheme ? '' : 'max-md:hidden'} />
+      <AccountButton />
     </header>
   )
 }
 
 
 /** The signed-in person's initial; opens a menu with 프로필, 설정 and 로그아웃. */
-function AccountButton({ className }: { className: string }) {
+function AccountButton() {
   const { user, logout } = useAuth()
   const location = useLocation()
   const [open, setOpen] = useState(false)
@@ -121,7 +121,7 @@ function AccountButton({ className }: { className: string }) {
   const item = 'flex h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm text-ink-2 hover:bg-subtle hover:text-ink'
   const here = (path: string) => (location.pathname === path ? 'bg-subtle font-semibold text-ink' : '')
   return (
-    <div ref={box} className={`relative shrink-0 ${className}`}>
+    <div ref={box} className="relative shrink-0">
       <button
         ref={button}
         type="button"

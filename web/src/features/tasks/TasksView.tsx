@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import type { BacklogItem } from '../../api/types'
 import { ConfirmInline } from '../../components/ConfirmInline'
 import { ArrowRight, Close, Plus, Sparkle } from '../../components/icons'
-import { card, doneStrike, srOnly } from '../../components/styles'
+import { card, doneText, srOnly } from '../../components/styles'
 import { GROUP_LABELS, deadlineCounts, groupBacklog } from '../../lib/backlog'
 import { todayISO } from '../../lib/date'
 import { formatDuration } from '../../lib/slots'
@@ -203,11 +203,11 @@ function TaskRow({ item, today, open, onToggle, onMoved }: RowProps) {
   }
 
   return (
-    <li className={`${card} flex flex-col gap-3 p-3.5 ${done ? 'bg-ground/60' : ''}`}>
+    <li className={`${card} flex flex-col gap-3 p-3.5 ${done ? 'border-transparent! bg-done-soft!' : ''}`}>
       <div className="flex items-start gap-3">
         <input
           type="checkbox"
-          className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--app-accent)]"
+          className={`mt-0.5 h-5 w-5 shrink-0 ${done ? 'done-pop accent-[var(--app-done)]' : 'accent-[var(--app-accent)]'}`}
           aria-label={`${item.title} 완료`}
           checked={done}
           onChange={(e) => void update(item.id, { status: e.target.checked ? 'done' : 'open' })}
@@ -228,7 +228,7 @@ function TaskRow({ item, today, open, onToggle, onMoved }: RowProps) {
           ) : (
             <span
               onDoubleClick={() => !done && setEditingTitle(true)}
-              className={`text-[15px] leading-snug font-medium break-words ${done ? `text-faint ${doneStrike}` : ''}`}
+              className={`text-[15px] leading-snug font-medium break-words ${done ? doneText : ''}`}
             >
               {item.title}
             </span>

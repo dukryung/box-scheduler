@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { api } from '../../api/client'
 import type { Stats } from '../../api/types'
+import { Check } from '../../components/icons'
 import { card } from '../../components/styles'
 import { WEEKDAYS, parseISODate, todayISO } from '../../lib/date'
 import { formatDuration } from '../../lib/slots'
@@ -129,7 +130,18 @@ export function StatsView() {
           <div className={`flex flex-col gap-3 transition-opacity md:gap-4 ${stale ? 'opacity-50' : ''}`} aria-busy={stale}>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-[2fr_1fr_1fr]">
               <section className={`${card} col-span-2 flex flex-col gap-2.5 p-[18px] md:col-span-1 md:p-5`}>
-                <span className="text-[13px] text-muted">완료율</span>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[13px] text-muted">완료율</span>
+                  {stats.streak > 0 && (
+                    <span
+                      className="flex items-center gap-1 rounded-full bg-done-soft px-2.5 py-0.5 text-xs font-bold text-done-ink"
+                      title="계획한 일을 모두 끝낸 날이 이어진 수예요. 일정이 없는 날은 건너뛰어요."
+                    >
+                      <Check size={12} strokeWidth={3} />
+                      {stats.streak}일 연속 완주
+                    </span>
+                  )}
+                </div>
                 <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                   <span className="text-[52px] leading-none font-bold tracking-tight md:text-[56px]" data-testid="completion-rate">
                     {rate === null ? '–' : `${rate}%`}

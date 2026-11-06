@@ -99,7 +99,7 @@ export function NotifySettings() {
           </button>
         </div>
       </div>
-      {toggle('reminders', '일정 시작 10분 전 알림', '시간표에 넣은 일이 시작하기 10분 전에 알려 줘요. 완료한 일은 빼요.')}
+      {toggle('reminders', '일정 시작·끝 알림', '시간표에 넣은 일이 시작하기 10분 전에, 30분 넘는 일은 끝나기 5분 전에도 알려 줘요. 완료한 일은 빼요.')}
       {toggle('team', '팀 알림', '누가 나를 팀 업무 담당자로 지정하거나, 내 몫을 AI로 세분화해 Brain Dump에 넣으면 알려 줘요.')}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <label className="flex flex-1 items-start gap-3 text-sm">

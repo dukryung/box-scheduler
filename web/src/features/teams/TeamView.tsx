@@ -3,7 +3,8 @@ import { useNavigate, useParams, useSearchParams } from 'react-router'
 import { teamApi } from '../../api/client'
 import type { InviteResult, TeamDetail, TeamMember, TeamRole } from '../../api/types'
 import { ConfirmInline } from '../../components/ConfirmInline'
-import { Gear, Mail, Plus } from '../../components/icons'
+import { Mail, Plus } from '../../components/icons'
+import { TeamSettingsLink } from './SpaceSwitcher'
 import { card, primaryButton, secondaryButton } from '../../components/styles'
 import { todayISO } from '../../lib/date'
 import { useAuth } from '../../store/authStore'
@@ -206,6 +207,8 @@ export function TeamView() {
         <h1 className="flex flex-1 items-center justify-center gap-2 text-[17px] font-semibold md:flex-none md:justify-start md:pl-2 md:text-lg">
           {team.name} <RoleBadge role={team.role} />
         </h1>
+        {/* From tablet width up the gear sits beside the space switcher. */}
+        <TeamSettingsLink teamId={team.id} className="md:hidden" />
         <div className="ml-auto hidden md:block">
           <ViewSwitch view="other" date={todayISO()} />
         </div>
@@ -232,15 +235,6 @@ export function TeamView() {
               </button>
             ))}
           </nav>
-          <button
-            type="button"
-            aria-label="팀 설정"
-            aria-current={tab === 'members' ? 'page' : undefined}
-            onClick={() => setParams({ tab: 'settings' }, { replace: true })}
-            className={`mb-1.5 ml-auto flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] ${tab === 'members' ? 'bg-ink font-semibold text-surface' : 'text-ink-2 hover:bg-subtle hover:text-ink'}`}
-          >
-            <Gear size={15} /> 설정
-          </button>
         </div>
 
         {tab === 'tasks' && <TeamTasks team={team} meId={me?.id ?? ''} />}

@@ -96,6 +96,39 @@ try {
     console.log('SKIP reminder checks: too close to midnight')
   }
 
+  // 3b. "끝냈나요?" 5 minutes before a block under way ends. Which zone has its
+  // 10-minute mark within 5 minutes decides the zone: UTC, or Kathmandu (+5:45).
+  {
+    const local = (zone) => {
+      const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(new Date()).map((x) => [x.type, x.value]))
+      const mins = Number(p.hour) * 60 + Number(p.minute) + Number(p.second) / 60
+      return { date: `${p.year}-${p.month}-${p.day}`, mins, left: 10 - (mins % 10) }
+    }
+    let zone = local('UTC').left <= 5 ? 'UTC' : 'Asia/Kathmandu'
+    if (local(zone).left < 0.6 || local(zone).left > 4.6) {
+      await sleep(40_000)
+      zone = local('UTC').left <= 5 ? 'UTC' : 'Asia/Kathmandu'
+    }
+    const at = local(zone)
+    const slot = Math.floor(at.mins / 10)
+    if (slot >= 3 && slot < 142 && at.left >= 0.3) {
+      await M('PUT', '/notifications/settings', { ...list.settings, reminders: true, timezone: zone })
+      const ending = (await M('POST', '/blocks', { date: at.date, startSlot: slot - 3, endSlot: slot + 1, title: '집중 작업' })).body
+      const next = (await M('POST', '/blocks', { date: at.date, startSlot: slot + 1, endSlot: slot + 2, title: '바로 다음' })).body
+      await sleep(4500)
+      check(!pushesTo(sub).some((x) => x.payload.kind === 'ending'), 'a block followed straight by another is not asked about')
+      await M('DELETE', `/blocks/${next.id}`)
+      const end = await push.waitFor((x) => x.id === sub.id && x.payload?.kind === 'ending')
+      check(/^\d분 뒤 끝나요: 집중 작업$/.test(end?.payload.title ?? '') && end.payload.url === `/day/${at.date}`, `end reminder: ${end?.payload.title}`)
+      await sleep(4500)
+      check(pushesTo(sub).filter((x) => x.payload.kind === 'ending').length === 1, 'the end reminder is sent once')
+      await M('DELETE', `/blocks/${ending.id}`)
+      await M('PUT', '/notifications/settings', { ...list.settings, reminders: true, timezone: tz })
+    } else {
+      console.log('SKIP end reminder checks: too close to midnight in', zone)
+    }
+  }
+
   // 4. Team notifications
   const team = (await call('POST', '/teams', { name: `알림팀 ${tag}` }, lead.cookie)).body
   dropTeam = () => call('DELETE', `/teams/${team.id}`, { confirm: team.name }, lead.cookie)

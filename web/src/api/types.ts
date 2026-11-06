@@ -146,6 +146,8 @@ export interface Stats {
   hourly: Array<BoxCount & { hour: number }>
   topTasks: Array<BoxCount & { title: string }>
   brainDump: Record<'open' | 'done' | 'carried' | 'dropped', number>
+  /** Planned days in a row, up to `to`, with everything done (today counts once finished). */
+  streak: number
 }
 
 /** One edit proposed by the assistant; sent back unchanged to apply it. */
@@ -388,7 +390,7 @@ export interface InviteInfo {
 
 export interface AppNotification {
   id: string
-  kind: 'assigned' | 'split' | 'subtasks' | 'reminder' | 'test' | 'meeting'
+  kind: 'assigned' | 'split' | 'subtasks' | 'reminder' | 'ending' | 'test' | 'meeting'
   title: string
   body: string
   /** In-app path to open, e.g. /day/2026-10-21. */

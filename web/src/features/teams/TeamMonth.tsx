@@ -8,11 +8,11 @@ import { WEEKDAYS, addMonths, formatMonthTitle, isValidMonth, monthOf, parseISOD
 import { DAY_CAPACITY, STATUS_LABEL, dailyLoad, hoursText, isWeekend, loadStep, monthDays, periodText, taskSpan } from '../../lib/teamTasks'
 import { TaskEditor } from './TeamTasks'
 
-// Bars by status: open work in the accent, done work recedes.
+// Bars by status: open work in the accent, done work in teal.
 const BAR_TONE = {
   todo: 'border border-accent/50 bg-accent-soft text-accent-ink',
   doing: 'bg-accent text-white',
-  done: 'bg-subtle text-muted line-through',
+  done: 'bg-done-soft text-done-ink',
 } as const
 // Daily load: the sequential orange ramp (validated with the stats heat strip); over capacity takes the darkest step plus a danger ring and "!".
 const HEAT = ['', 'var(--viz-seq-1)', 'var(--viz-seq-2)', 'var(--viz-seq-3)', 'var(--viz-seq-4)', 'var(--viz-seq-6)']
@@ -146,7 +146,7 @@ export function TeamMonth({ team, meId }: { team: TeamDetail; meId: string }) {
                       style={{ gridColumn: 1, gridRow: 1 }}
                       className="sticky left-0 z-20 flex min-w-0 flex-col items-start bg-surface px-3 py-1.5 text-left hover:bg-subtle"
                     >
-                      <span className={`w-full truncate text-[13px] font-medium ${t.status === 'done' ? 'text-muted line-through' : ''}`}>{t.title}</span>
+                      <span className={`w-full truncate text-[13px] font-medium ${t.status === 'done' ? 'text-done-ink' : ''}`}>{t.title}</span>
                       <span className="w-full truncate text-[11px] text-muted">{t.assignees.length ? t.assignees.map(personName).join(', ') : '담당자 없음'}</span>
                     </button>
                     {stripes(1)}

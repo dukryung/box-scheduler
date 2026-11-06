@@ -39,3 +39,24 @@ func TestSumBoxes(t *testing.T) {
 		t.Fatalf("sumBoxes = %+v", got)
 	}
 }
+
+func TestFinishStreak(t *testing.T) {
+	day := func(s string) time.Time { d, _ := time.Parse(dateLayout, s); return d }
+	b := func(date string, done bool) store.Block { return store.Block{Date: date, StartSlot: 0, EndSlot: 1, Done: done} }
+	blocks := []store.Block{
+		b("2026-10-01", true), b("2026-10-01", false), // breaks the run
+		b("2026-10-02", true),
+		// 10-03 had nothing planned: passed over
+		b("2026-10-04", true), b("2026-10-04", true),
+		b("2026-10-05", false), // today, still under way
+	}
+	if got := finishStreak(blocks, day("2026-10-05")); got != 2 {
+		t.Fatalf("streak with today under way = %d, want 2", got)
+	}
+	if got := finishStreak(append(blocks[:len(blocks)-1], b("2026-10-05", true)), day("2026-10-05")); got != 3 {
+		t.Fatalf("streak with today finished = %d, want 3", got)
+	}
+	if got := finishStreak(nil, day("2026-10-05")); got != 0 {
+		t.Fatalf("no blocks = %d, want 0", got)
+	}
+}
