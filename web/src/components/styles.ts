@@ -3,7 +3,8 @@
 export const iconButton =
   'flex h-10 w-10 items-center justify-center rounded-[10px] text-ink-2 hover:bg-subtle md:h-9 md:w-9 md:border md:border-line md:bg-surface'
 
-export const card = 'rounded-2xl border border-line bg-surface'
+/** A card: hairline border and a soft two-layer shadow so it sits just above the ground. */
+export const card = 'rounded-2xl border border-line bg-surface shadow-[0_1px_2px_rgba(28,25,23,0.04),0_8px_24px_rgba(28,25,23,0.04)]'
 
 export const primaryButton =
   'inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40'

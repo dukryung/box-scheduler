@@ -17,9 +17,8 @@ import {
   type SlotRange,
 } from '../../lib/slots'
 import { Check, Sparkle } from '../../components/icons'
-import { doneStrike } from '../../components/styles'
 import { useIsMobile } from '../../lib/useIsMobile'
-import { TONE_CLASS, toneVars } from './colors'
+import { DEFAULT_BLOCK_COLOR } from './colors'
 
 // Row height per hour: a little shorter on phones so more of the day fits.
 const ROW_HEIGHT = 46
@@ -265,16 +264,17 @@ export function TimeGrid({
                     'border-b border-grid',
                     col === 2 ? 'border-r border-r-line-strong/70' : 'border-r border-r-grid',
                     selected ? 'bg-accent-soft' : 'hover:bg-subtle/60',
-                    slot === nowSlot ? 'rounded-md bg-accent/10 shadow-[inset_0_0_0_2px_var(--app-accent)]' : '',
+                    slot === nowSlot ? 'bg-accent/10' : '',
                   ].join(' ')}
                 />
               )
             })}
 
+            {/* Late in the hour the label hangs left so it stays inside the grid. */}
             {nowSlot !== null && (
               <div
                 style={{ gridRow: Math.floor(nowSlot / SLOTS_PER_HOUR) + 1, gridColumn: (nowSlot % SLOTS_PER_HOUR) + 1 }}
-                className="pointer-events-none z-30 -mt-2.5 ml-1.5 self-start justify-self-start rounded-md bg-accent px-1.5 font-mono text-[10px] font-medium whitespace-nowrap text-white"
+                className={`pointer-events-none z-30 -mt-2.5 self-start rounded-md ${nowSlot % SLOTS_PER_HOUR >= 4 ? 'mr-1 justify-self-end' : 'ml-1.5 justify-self-start'} bg-ink px-1.5 font-mono text-[10px] font-medium whitespace-nowrap text-surface`}
               >
                 지금 {slotToTime(nowSlot)}
               </div>
@@ -326,37 +326,64 @@ export function TimeGrid({
               const range = isDragged ? drag!.range : toRange(block)
               const segments = rowSegments(range)
               const labelIdx = widestSegment(segments)
+              // Orange is the one going on now; teal is done; the rest stay quiet, their color a dot.
+              const state = block.done ? 'done' : nowSlot !== null && block.startSlot <= nowSlot && nowSlot < block.endSlot ? 'now' : 'planned'
+              // A block whose time is over but is not marked done asks whether it was.
+              const late = state === 'planned' && nowSlot !== null && block.endSlot <= nowSlot
               return segments.map((seg, i) => {
                 const first = i === 0
                 const last = i === segments.length - 1
+                const wide = seg.colEnd - seg.colStart >= 4
+                // On the block going on now, the part of this row already past is shaded.
+                const segStart = seg.row * SLOTS_PER_HOUR + seg.colStart
+                const passed = state === 'now' && nowSlot !== null ? Math.min(1, Math.max(0, (nowSlot - segStart) / (seg.colEnd - seg.colStart))) : 0
                 return (
                   <div
                     key={`${block.id}-${seg.row}`}
                     data-block-id={block.id}
+                    data-state={state}
                     style={{
                       gridRow: seg.row + 1,
                       gridColumn: `${seg.colStart + 1} / ${seg.colEnd + 1}`,
-                      ...toneVars(block.color),
                     }}
                     className={[
-                      TONE_CLASS,
-                      'relative z-10 my-[3px] flex touch-none items-center gap-1.5 overflow-hidden px-2 text-xs font-semibold md:px-2.5 md:text-[13px]',
-                      first ? 'ml-[3px] rounded-l-lg' : '',
-                      last ? 'mr-[3px] rounded-r-lg' : '',
+                      state === 'done'
+                        ? 'bg-done-soft text-done-ink'
+                        : state === 'now'
+                          ? 'now-glow bg-accent text-white'
+                          : 'border border-line bg-subtle text-ink-2',
+                      'relative z-10 my-[3px] flex touch-none items-center gap-1.5 overflow-hidden px-2 text-xs font-semibold transition-colors duration-300 md:px-2.5 md:text-[13px]',
+                      first ? 'ml-[3px] rounded-l-xl' : '',
+                      last ? 'mr-[3px] rounded-r-xl' : '',
                       isTempId(block.id) ? 'animate-pulse' : 'cursor-grab active:cursor-grabbing',
                       isDragged ? 'z-20 shadow-lg ring-2 ring-accent' : '',
                       block.id === flashId ? 'z-20 animate-pulse ring-2 ring-accent ring-offset-1' : '',
                       isDragged && dropInvalid ? 'opacity-50 ring-danger' : '',
                     ].join(' ')}
                   >
+                    {passed > 0 && <span aria-hidden="true" className="absolute inset-y-0 left-0 bg-black/15" style={{ width: `${passed * 100}%` }} />}
                     {i === labelIdx && (
                       <>
-                        {block.done && <Check size={14} className="shrink-0" />}
+                        {state === 'done' ? (
+                          <span className="done-pop flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-done text-done-on">
+                            <Check size={11} strokeWidth={3.2} />
+                          </span>
+                        ) : state === 'now' ? (
+                          <span className="live-dot relative h-2 w-2 shrink-0 rounded-full bg-white" />
+                        ) : (
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: block.color ?? DEFAULT_BLOCK_COLOR }} />
+                        )}
                         {block.source === 'ai' && <Sparkle size={13} className="shrink-0" aria-label="AI 제안" />}
-                        <span className={`truncate ${block.done ? doneStrike : ''}`}>{block.title}</span>
-                        <span className="hidden shrink-0 font-mono text-[11px] font-normal opacity-75 md:inline">
+                        <span className={`relative truncate ${state === 'planned' ? '' : 'font-bold'}`}>{block.title}</span>
+                        <span className="relative hidden shrink-0 font-mono text-[11px] font-normal opacity-80 md:inline">
                           {isDragged ? formatRange(range) : `${slotToTime(range.start)}–${slotToTime(range.end)}`}
                         </span>
+                        {late && wide && (
+                          <span className="ml-auto hidden shrink-0 rounded-full border border-line-strong bg-surface px-2 py-px text-[11px] font-bold text-ink-2 md:inline">끝냈나요?</span>
+                        )}
+                        {state === 'done' && wide && (
+                          <span className="ml-auto hidden shrink-0 rounded-full bg-done px-2 py-px text-[11px] font-bold text-done-on md:inline">완료</span>
+                        )}
                       </>
                     )}
                     {first && <div data-edge="start" className="absolute inset-y-0 left-0 w-2 cursor-ew-resize" />}

@@ -59,9 +59,9 @@ export function Logo({ size = 26 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 26 26" aria-hidden="true">
       <rect x="1" y="1" width="24" height="24" rx="6" className="fill-ink" />
       <rect x="6" y="6" width="6" height="6" rx="1.5" className="fill-accent-bright" />
-      <rect x="14" y="14" width="6" height="6" rx="1.5" className="fill-accent-bright" />
+      <rect x="14" y="14" width="6" height="6" rx="1.5" fill="#14b8a6" />
       <rect x="14" y="6" width="6" height="6" rx="1.5" className="fill-accent-bright" opacity="0.4" />
-      <rect x="6" y="14" width="6" height="6" rx="1.5" className="fill-accent-bright" opacity="0.4" />
+      <rect x="6" y="14" width="6" height="6" rx="1.5" fill="#14b8a6" opacity="0.4" />
     </svg>
   )
 }

@@ -2,11 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { OVERLAP_MESSAGE, api } from '../../api/client'
 import type { AssistantOp } from '../../api/types'
-import { ChevronLeft, ChevronRight, Flag, Mic, Plus } from '../../components/icons'
+import { Check, ChevronLeft, ChevronRight, Flag, Mic, Plus } from '../../components/icons'
 import { card, iconButton } from '../../components/styles'
 import { WEEKDAYS, addDays, parseISODate, todayISO } from '../../lib/date'
 import { SLOT_MINUTES, nextBoundary, slotToTime, type SlotRange } from '../../lib/slots'
-import { hm } from '../../lib/hm'
 import { useIsMobile } from '../../lib/useIsMobile'
 import { useDayStore } from '../../store/dayStore'
 import { useTasksStore } from '../../store/tasksStore'
@@ -22,6 +21,7 @@ import { PlaceSheet } from '../braindump/PlaceSheet'
 import { BottomTabs, TopBar, ViewSwitch } from '../nav/ViewSwitch'
 import { BlockPopover } from './BlockPopover'
 import { DEFAULT_BLOCK_COLOR } from './colors'
+import { DaySummary } from './DaySummary'
 import { TimeGrid, type GhostBlock, type GridAnchor } from './TimeGrid'
 
 type Popover = { mode: 'create'; range: SlotRange; at: GridAnchor } | { mode: 'edit'; id: string; at: GridAnchor }
@@ -63,6 +63,8 @@ export function DayView({ date }: { date: string }) {
   const resetAssistant = assistant.reset
   const nowSlot = useNowSlot()
   const isToday = date === todayISO()
+  const [cheer, setCheer] = useState<{ title: string; from: number; to: number } | null>(null)
+  const seenDone = useRef<{ date: string; done: Map<string, boolean> } | null>(null)
   const d = parseISODate(date)
 
   // The URL is the source of truth for which day is shown.
@@ -100,6 +102,25 @@ export function DayView({ date }: { date: string }) {
     const id = setTimeout(() => setError(null), 3000)
     return () => clearTimeout(id)
   }, [error, setError])
+
+  // When a block is marked done (here, in Brain Dump or by voice), say so with the day's share before and after.
+  useEffect(() => {
+    const prev = seenDone.current
+    seenDone.current = { date, done: new Map(blocks.map((b) => [b.id, b.done])) }
+    if (!prev || prev.date !== date) return
+    const finished = blocks.find((b) => b.done && prev.done.get(b.id) === false)
+    if (!finished) return
+    const planned = blocks.reduce((n, b) => n + b.endSlot - b.startSlot, 0)
+    const done = blocks.reduce((n, b) => n + (b.done ? b.endSlot - b.startSlot : 0), 0)
+    const share = (boxes: number) => (planned ? Math.round((boxes / planned) * 100) : 0)
+    setCheer({ title: finished.title, from: share(done - (finished.endSlot - finished.startSlot)), to: share(done) })
+  }, [blocks, date])
+
+  useEffect(() => {
+    if (!cheer) return
+    const id = setTimeout(() => setCheer(null), 2600)
+    return () => clearTimeout(id)
+  }, [cheer])
 
   useEffect(() => {
     if (!notice) return
@@ -166,8 +187,6 @@ export function DayView({ date }: { date: string }) {
 
   const occupied = blocks.map((b) => ({ start: b.startSlot, end: b.endSlot }))
   const editingBlock = popover?.mode === 'edit' ? blocks.find((b) => b.id === popover.id) : undefined
-  const plannedBoxes = blocks.reduce((n, b) => n + b.endSlot - b.startSlot, 0)
-  const doneBoxes = blocks.reduce((n, b) => n + (b.done ? b.endSlot - b.startSlot : 0), 0)
   // Items still without a time today ("미배정"), counted on the Brain Dump tab.
   const unscheduledItems = brainDump.filter((it) => it.status === 'open' && !blocks.some((b) => b.brainDumpId === it.id)).length
 
@@ -260,24 +279,7 @@ export function DayView({ date }: { date: string }) {
           )}
         </div>
 
-        <div className="order-last flex w-full items-center gap-2.5 text-xs text-muted md:order-none md:ml-auto md:w-[200px] md:flex-col md:items-stretch md:gap-1.5">
-          <div className="flex shrink-0 justify-between gap-2.5">
-            <span>{isToday ? '오늘 완료' : '완료'}</span>
-            <span className="hidden font-mono text-ink md:inline">
-              {hm(doneBoxes)} / {hm(plannedBoxes)}
-            </span>
-          </div>
-          <div className="h-1.5 flex-1 rounded-full bg-subtle md:flex-none">
-            <div
-              className="h-1.5 rounded-full bg-accent-bright transition-[width]"
-              style={{ width: plannedBoxes ? `${(doneBoxes / plannedBoxes) * 100}%` : 0 }}
-            />
-          </div>
-          <span className="shrink-0 font-mono text-ink md:hidden">
-            {hm(doneBoxes)} / {hm(plannedBoxes)}
-          </span>
-        </div>
-
+        <span className="hidden flex-1 md:block" />
         <ViewSwitch view="day" date={date} />
         <button
           onClick={() => {
@@ -290,6 +292,13 @@ export function DayView({ date }: { date: string }) {
           <Mic size={18} />
         </button>
       </TopBar>
+
+      {/* The AI panel needs the height while it is open. */}
+      {!aiOpen && (!mobile || mobileTab === 'grid') && (
+        <div className="px-4 pt-3 md:px-6 md:pt-4">
+          <DaySummary blocks={blocks} isToday={isToday} onFinish={(id) => void updateBlock(id, { done: true })} />
+        </div>
+      )}
 
       {showDeadlines && (
         <button
@@ -353,7 +362,7 @@ export function DayView({ date }: { date: string }) {
         )}
 
         {showAside && (
-          <aside className={`${card} flex min-h-0 flex-1 flex-col p-4 md:w-[320px] md:flex-none md:shrink-0 md:p-5`}>
+          <aside className={`${card} rise-in flex min-h-0 flex-1 flex-col p-4 [animation-delay:.05s] md:w-[320px] md:flex-none md:shrink-0 md:p-5`}>
             {aiOpen && !mobile ? (
               aiPanel
             ) : mobile ? (
@@ -388,7 +397,7 @@ export function DayView({ date }: { date: string }) {
         )}
 
         {showGrid && (
-          <main className={`${card} flex min-h-0 flex-1 flex-col px-2.5 pt-2.5 pb-3 md:px-5 md:pt-4 md:pb-5`}>
+          <main className={`${card} rise-in flex min-h-0 flex-1 flex-col px-2.5 pt-2.5 pb-3 [animation-delay:.1s] md:px-5 md:pt-4 md:pb-5`}>
             <TimeGrid
               key={date}
               blocks={blocks}
@@ -515,7 +524,23 @@ export function DayView({ date }: { date: string }) {
         />
       )}
 
-      {(error ?? notice) && (
+      {cheer && !error && (
+        <div
+          role="status"
+          className="toast-in fixed bottom-24 left-1/2 z-50 flex max-w-[calc(100vw-32px)] items-center gap-2.5 rounded-xl bg-ink py-2.5 pr-4 pl-2.5 text-sm text-surface shadow-[0_12px_30px_rgba(28,25,23,0.25)] md:bottom-6"
+        >
+          <span className="done-pop flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-done-bright text-[#042f2e]">
+            <Check size={12} strokeWidth={3.2} />
+          </span>
+          <span className="min-w-0 truncate">
+            ‘{cheer.title}’ 완료 · {isToday ? '오늘' : '이날'}{' '}
+            <b className="tabular-nums">
+              {cheer.from}% → {cheer.to}%
+            </b>
+          </span>
+        </div>
+      )}
+      {!cheer && (error ?? notice) && (
         <div
           role={error ? 'alert' : 'status'}
           className="fixed bottom-24 left-1/2 z-50 max-w-[calc(100vw-32px)] -translate-x-1/2 rounded-xl bg-ink px-4 py-2.5 text-sm text-surface shadow-lg md:bottom-6"

@@ -7,7 +7,9 @@
 /* "Plex Planner": IBM Plex type, warm off-white ground, white cards, one orange
    accent; violet is reserved for AI. Utilities read these tokens (bg-surface, text-muted, …).
    accent is the deep orange that carries white text (4.6:1); accent-bright is the
-   lighter orange for marks without text (bars, rings, the logo). */
+   lighter orange for marks without text (bars, rings, the logo).
+   Orange is what to do now, teal (done) is what is done. hero is the one dark panel a
+   screen may have (the day's summary): it stays dark in both themes. */
 @theme {
   --font-sans: 'IBM Plex Sans KR', system-ui, -apple-system, 'Apple SD Gothic Neo', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
@@ -32,6 +34,17 @@
   --color-ai-ink: var(--app-ai-ink);
   --color-good: var(--app-good);
   --color-danger: var(--app-danger);
+  --color-done: var(--app-done);
+  --color-done-on: var(--app-done-on);
+  --color-done-soft: var(--app-done-soft);
+  --color-done-ink: var(--app-done-ink);
+  --color-done-bright: var(--app-done-bright);
+  --color-hero: var(--app-hero);
+  --color-hero-raised: var(--app-hero-raised);
+  --color-hero-track: var(--app-hero-track);
+  --color-hero-ink: var(--app-hero-ink);
+  --color-hero-muted: var(--app-hero-muted);
+  --color-hero-label: var(--app-hero-label);
 }
 
 :root {
@@ -56,6 +69,17 @@
   --app-ai-ink: #4527b8;
   --app-good: #0b6b3a;
   --app-danger: #b42318;
+  --app-done: #0f766e;
+  --app-done-on: #ffffff;
+  --app-done-soft: #e3f2ef;
+  --app-done-ink: #115e59;
+  --app-done-bright: #2dd4bf;
+  --app-hero: #1c1917;
+  --app-hero-raised: #2f2b27;
+  --app-hero-track: #403a34;
+  --app-hero-ink: #f5f1ec;
+  --app-hero-muted: #a8a29e;
+  --app-hero-label: #fdba8c;
 
   /* Chart tokens: one orange ramp, validated for light and dark surfaces
      (planned = lighter step, done = darker step; seq-1..6 = hour heat strip). */
@@ -96,6 +120,17 @@
   --app-ai-ink: #cfc3ff;
   --app-good: #4ade80;
   --app-danger: #f97066;
+  --app-done: #2dd4bf;
+  --app-done-on: #042f2e;
+  --app-done-soft: #14302c;
+  --app-done-ink: #99f6e4;
+  --app-done-bright: #2dd4bf;
+  --app-hero: #26221f;
+  --app-hero-raised: #34302b;
+  --app-hero-track: #4a433c;
+  --app-hero-ink: #f5f1ec;
+  --app-hero-muted: #a8a29e;
+  --app-hero-label: #fdba8c;
 
   --viz-planned: #9a3d12;
   --viz-done: #fb8c4a;

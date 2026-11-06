@@ -1,4 +1,4 @@
-// "Google로 계속하기": new accounts, returning sign-in, linking from 설정, and the refusals.
+// "Google로 계속하기": new accounts, returning sign-in, linking from 프로필, and the refusals.
 import { BASE, admin, call, checker, launch, removeUser, watchErrors } from './lib.mjs'
 import { startFakeGoogle } from './fake-google.mjs'
 
@@ -35,7 +35,7 @@ try {
   cleanup.push(gina.id)
 
   // 2. Signing in again finds the same account
-  await p.goto(`${BASE}/settings`)
+  await p.goto(`${BASE}/profile`)
   await p.getByRole('button', { name: '로그아웃' }).click()
   await p.waitForURL('**/login')
   await p.getByRole('link', { name: 'Google로 계속하기' }).click()
@@ -44,7 +44,7 @@ try {
   check((await admin('GET', `/users?q=gina-${tag}`)).users.length === 1, 'still one account')
 
   // 3. A Google-only account can add a password, then unlink Google
-  await p.goto(`${BASE}/settings`)
+  await p.goto(`${BASE}/profile`)
   await p.getByRole('heading', { name: '로그인 방법' }).waitFor()
   check(await p.getByText('없음 (아래에서 정할 수 있어요)').isVisible(), 'settings: no password yet')
   check((await p.getByRole('button', { name: '연결 끊기' }).count()) === 0, 'cannot unlink Google without a password')
@@ -69,15 +69,15 @@ try {
   await q.getByText('이 이메일로 가입된 계정이 이미 있어요').waitFor()
   check(q.url().includes('error=google_email_exists') && (await me(q)) === null, 'same-email Google sign-in refused, not signed in')
 
-  // 5. …but pat can link it from 설정 after signing in with the password
+  // 5. …but pat can link it from 프로필 after signing in with the password
   await q.getByLabel('이메일').fill(pat.email)
   await q.getByLabel('비밀번호').fill(pat.password)
   await q.getByRole('button', { name: '로그인', exact: true }).click()
   await q.waitForURL('**/day/**')
-  await q.goto(`${BASE}/settings`)
+  await q.goto(`${BASE}/profile`)
   await q.getByRole('link', { name: 'Google 연결하기' }).click()
   await q.getByText('Google 계정을 연결했어요').waitFor()
-  check((await me(q)).google === true, 'linked from 설정')
+  check((await me(q)).google === true, 'linked from 프로필')
   await q.getByRole('button', { name: '로그아웃' }).click()
   await q.waitForURL('**/login')
   await q.getByRole('link', { name: 'Google로 계속하기' }).click()
@@ -90,7 +90,7 @@ try {
   cleanup.push(sam.body.id)
   const s = await browser.newPage({ viewport: { width: 1440, height: 900 }, signedOut: true })
   await s.context().addCookies([{ name: 'bs_session', value: sam.cookie, url: BASE }])
-  await s.goto(`${BASE}/settings`)
+  await s.goto(`${BASE}/profile`)
   await s.getByRole('link', { name: 'Google 연결하기' }).click()
   await s.getByText('이미 다른 계정에 연결돼 있어요').waitFor()
   check((await me(s)).google === false, "pat's Google not linked to sam")
@@ -131,7 +131,7 @@ try {
   await d.getByRole('button', { name: '시작하기' }).click()
   await d.waitForURL('**/day/**')
   const dora = await me(d)
-  await d.goto(`${BASE}/settings`)
+  await d.goto(`${BASE}/profile`)
   await d.getByRole('button', { name: '계정 삭제' }).click()
   await d.getByLabel('이메일 확인').fill(dora.email)
   await d.getByRole('button', { name: '계정 영구 삭제' }).click()

@@ -86,7 +86,7 @@ func (a *API) googleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	if q.Get("error") != "" || q.Get("code") == "" {
 		if p.LinkUser != "" {
-			http.Redirect(w, r, "/settings", http.StatusFound)
+			http.Redirect(w, r, "/profile", http.StatusFound)
 			return
 		}
 		fail("google_cancel")
@@ -113,7 +113,7 @@ func (a *API) googleCallback(w http.ResponseWriter, r *http.Request) {
 			writeStoreError(w, err)
 			return
 		}
-		http.Redirect(w, r, "/settings?google="+result, http.StatusFound)
+		http.Redirect(w, r, "/profile?google="+result, http.StatusFound)
 		return
 
 	case p.Setup:

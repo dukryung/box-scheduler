@@ -114,7 +114,7 @@ export function AssistantBar({ assistant, inputRef, listenOnMount, showShortcut 
     <div className="flex flex-col gap-1.5">
       <form
         className={`flex items-center gap-1.5 rounded-xl border bg-surface py-1 pr-1 pl-3.5 ${
-          speech.listening ? 'border-ai shadow-[0_0_0_3px_rgba(109,74,255,0.15)]' : 'border-line-strong focus-within:border-ai'
+          speech.listening ? 'border-ai shadow-[0_0_0_3px_rgba(109,74,255,0.15)]' : 'border-line shadow-[0_1px_2px_rgba(28,25,23,0.04)] transition-[border-color,box-shadow] focus-within:border-ai focus-within:shadow-[0_0_0_4px_rgba(109,74,255,0.12)]'
         }`}
         onSubmit={(e) => {
           e.preventDefault()

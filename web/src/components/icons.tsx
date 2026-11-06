@@ -33,6 +33,26 @@ export const ChevronRight = (p: IconProps) => (
   </Stroke>
 )
 
+export const UserIcon = (p: IconProps) => (
+  <Stroke {...p}>
+    <circle cx="12" cy="8" r="4" />
+    <path d="M4 21a8 8 0 0 1 16 0" />
+  </Stroke>
+)
+
+export const LogOut = (p: IconProps) => (
+  <Stroke {...p}>
+    <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 16l-4-4 4-4M6 12h10" />
+  </Stroke>
+)
+
+export const Mail = (p: IconProps) => (
+  <Stroke {...p}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="m3 7 9 6 9-6" />
+  </Stroke>
+)
+
 export const Plus = (p: IconProps) => (
   <Stroke strokeWidth={2.2} {...p}>
     <path d="M12 5v14M5 12h14" />
@@ -173,11 +193,12 @@ export function Grip(p: SVGProps<SVGSVGElement>) {
 
 export function Logo({ size = 26 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 26 26" aria-hidden="true" className="text-accent-bright">
-      <rect x="1" y="1" width="11" height="11" rx="3" fill="currentColor" />
-      <rect x="14" y="1" width="11" height="11" rx="3" fill="currentColor" opacity="0.35" />
-      <rect x="1" y="14" width="11" height="11" rx="3" fill="currentColor" opacity="0.35" />
-      <rect x="14" y="14" width="11" height="11" rx="3" fill="currentColor" opacity="0.7" />
+    // Orange (to do) and teal (done), as in the app.
+    <svg width={size} height={size} viewBox="0 0 26 26" aria-hidden="true">
+      <rect x="1" y="1" width="11" height="11" rx="3" fill="#f97316" />
+      <rect x="14" y="1" width="11" height="11" rx="3" fill="#f97316" opacity="0.35" />
+      <rect x="1" y="14" width="11" height="11" rx="3" fill="#14b8a6" opacity="0.35" />
+      <rect x="14" y="14" width="11" height="11" rx="3" fill="#14b8a6" />
     </svg>
   )
 }

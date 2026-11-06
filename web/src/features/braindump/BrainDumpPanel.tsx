@@ -1,7 +1,7 @@
 import { useState, type ReactNode, type Ref } from 'react'
 import { ConfirmInline } from '../../components/ConfirmInline'
 import { Archive, ArrowRight, CalendarPlus, Close, Grip, Plus, Sparkle } from '../../components/icons'
-import { doneStrike, secondaryButton, srOnly } from '../../components/styles'
+import { secondaryButton, srOnly } from '../../components/styles'
 import { groupBrainDump, type Row } from '../../lib/brainDumpGroups'
 import { urgentBacklog } from '../../lib/backlog'
 import { addDays, parseISODate, todayISO } from '../../lib/date'
@@ -204,8 +204,12 @@ function BrainDumpRow({ row, onDragItem, onPlace, onFocusBlock }: RowProps) {
       onDragEnd={() => onDragItem(null)}
       className={[
         'group flex flex-col gap-2 rounded-xl border p-3',
-        unscheduled ? 'border-dashed border-line-strong bg-surface' : 'border-grid bg-surface',
-        item.status === 'done' ? 'bg-ground/60' : '',
+        draggable ? 'lift' : '',
+        item.status === 'done'
+          ? 'border-transparent bg-done-soft'
+          : unscheduled
+            ? 'border-dashed border-line-strong bg-surface'
+            : 'border-grid bg-surface',
         draggable ? 'md:cursor-grab md:active:cursor-grabbing md:hover:border-line-strong' : '',
         pending ? 'opacity-60' : '',
         item.status === 'carried' || item.status === 'dropped' ? 'opacity-55' : '',
@@ -215,7 +219,7 @@ function BrainDumpRow({ row, onDragItem, onPlace, onFocusBlock }: RowProps) {
         <Grip className={`mt-0.5 hidden shrink-0 text-faint md:block ${draggable ? '' : 'invisible'}`} />
         <input
           type="checkbox"
-          className="mt-0.5 h-5 w-5 shrink-0 accent-[var(--app-accent)] md:h-[18px] md:w-[18px]"
+          className={`mt-0.5 h-5 w-5 shrink-0 md:h-[18px] md:w-[18px] ${item.status === 'done' ? 'done-pop accent-[var(--app-done)]' : 'accent-[var(--app-accent)]'}`}
           aria-label={`${item.title} 완료`}
           checked={item.status === 'done'}
           disabled={pending || item.status === 'carried'}
@@ -237,12 +241,13 @@ function BrainDumpRow({ row, onDragItem, onPlace, onFocusBlock }: RowProps) {
           ) : (
             <div
               onDoubleClick={() => open && !pending && !linked && setEditing(true)}
-              className={`text-[15px] leading-snug font-medium break-words md:text-sm ${item.status === 'done' ? `text-faint ${doneStrike}` : ''}`}
+              className={`text-[15px] leading-snug break-words md:text-sm ${item.status === 'done' ? 'font-bold text-done-ink' : 'font-medium'}`}
             >
               {item.title}
             </div>
           )}
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-muted">
+            {item.status === 'done' && <span className="rounded-full bg-done px-2 py-px text-[11px] font-bold text-done-on">완료</span>}
             {unscheduled && (
               <span className="rounded-md border border-line-strong px-1.5 py-0.5 text-[11px] font-semibold text-ink-2">미배정</span>
             )}
@@ -261,7 +266,7 @@ function BrainDumpRow({ row, onDragItem, onPlace, onFocusBlock }: RowProps) {
                 key={b.id}
                 onClick={() => onFocusBlock(b.id)}
                 aria-label={`시간표에서 ${slotToTime(b.startSlot)} 블록 보기`}
-                className={`rounded-md bg-subtle px-1.5 py-0.5 font-mono text-[11px] text-ink-2 hover:bg-line ${b.done ? 'line-through decoration-danger' : ''}`}
+                className={`rounded-md px-1.5 py-0.5 font-mono text-[11px] ${b.done ? 'bg-surface/70 font-semibold text-done-ink' : 'bg-subtle text-ink-2 hover:bg-line'}`}
               >
                 {slotToTime(b.startSlot)}–{slotToTime(b.endSlot)}
               </button>

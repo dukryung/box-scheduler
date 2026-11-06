@@ -35,7 +35,29 @@ function Note({ text, tone = 'muted' }: { text: string | null; tone?: 'muted' | 
   )
 }
 
-export function SettingsView() {
+/** The page frame shared by 프로필 and 설정; the header has no title (the account menu says where you are). */
+function Page({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="flex min-h-dvh flex-col bg-ground text-ink">
+      <TopBar phoneTheme>
+        <span className="flex-1" />
+        <div className="hidden md:block">
+          <ViewSwitch view="other" date={todayISO()} />
+        </div>
+      </TopBar>
+
+      <main className="mx-auto flex w-full max-w-[640px] flex-col gap-3 px-4 pt-3 pb-[104px] md:gap-4 md:px-6 md:pt-6 md:pb-10">
+        <h1 className="sr-only">{title}</h1>
+        {children}
+      </main>
+
+      <BottomTabs view="other" date={todayISO()} />
+    </div>
+  )
+}
+
+/** 프로필: who you are and how you sign in. */
+export function ProfileView() {
   const { user, setUser, logout } = useAuth()
   const [name, setName] = useState(user?.name ?? '')
   const [nameNote, setNameNote] = useState<string | null>(null)
@@ -47,10 +69,6 @@ export function SettingsView() {
   const [googleNote, setGoogleNote] = useState<string | null>(null)
   const [params] = useSearchParams()
   const googleOn = useGoogleEnabled()
-  const { teams, loaded: teamsLoaded, load: loadTeams } = useTeams()
-  useEffect(() => {
-    if (!teamsLoaded) void loadTeams()
-  }, [teamsLoaded, loadTeams])
   const linked = params.get('google')
   if (!user) return null
 
@@ -97,15 +115,7 @@ export function SettingsView() {
   }
 
   return (
-    <div className="flex min-h-dvh flex-col bg-ground text-ink">
-      <TopBar phoneTheme>
-        <h1 className="flex-1 text-center text-[17px] font-semibold md:flex-none md:pl-2 md:text-left md:text-lg">설정</h1>
-        <div className="ml-auto hidden md:block">
-          <ViewSwitch view="other" date={todayISO()} />
-        </div>
-      </TopBar>
-
-      <main className="mx-auto flex w-full max-w-[640px] flex-col gap-3 px-4 pt-3 pb-[104px] md:gap-4 md:px-6 md:pt-6 md:pb-10">
+    <Page title="프로필">
         <Section
           title="내 계정"
           aside={
@@ -128,35 +138,6 @@ export function SettingsView() {
             </div>
             <Note text={nameNote} />
           </form>
-        </Section>
-
-        <Section title="내 팀" aside={<Link to="/teams/new" className="text-sm font-semibold text-accent dark:text-accent-bright">+ 새 팀</Link>}>
-          {teams.length === 0 ? (
-            <p className="text-sm text-muted">아직 속한 팀이 없어요. 팀을 만들거나 초대 메일의 링크로 들어가요.</p>
-          ) : (
-            <ul className="flex flex-col divide-y divide-line">
-              {teams.map((t) => (
-                <li key={t.id}>
-                  <Link to={`/team/${t.id}`} className="flex items-center justify-between py-2.5 text-sm hover:text-accent">
-                    <span className="font-medium">{t.name}</span>
-                    <span className="text-xs text-muted">
-                      {{ owner: 'owner', manager: '매니저', member: '일반' }[t.role]} · {t.members}명
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-
-        <div id="notifications" className="scroll-mt-20">
-          <Section title="알림">
-            <NotifySettings />
-          </Section>
-        </div>
-
-        <Section title="AI 연결">
-          <AIConnections />
         </Section>
 
         <Section title="로그인 방법">
@@ -259,9 +240,48 @@ export function SettingsView() {
             </form>
           </Section>
         )}
-      </main>
+    </Page>
+  )
+}
 
-      <BottomTabs view="other" date={todayISO()} />
-    </div>
+/** 설정: teams, notifications and AI. */
+export function SettingsView() {
+  const { teams, loaded: teamsLoaded, load: loadTeams } = useTeams()
+  useEffect(() => {
+    if (!teamsLoaded) void loadTeams()
+  }, [teamsLoaded, loadTeams])
+
+  return (
+    <Page title="설정">
+        <Section title="내 팀" aside={<Link to="/teams/new" className="text-sm font-semibold text-accent dark:text-accent-bright">+ 새 팀</Link>}>
+          {teams.length === 0 ? (
+            <p className="text-sm text-muted">아직 속한 팀이 없어요. 팀을 만들거나 초대 메일의 링크로 들어가요.</p>
+          ) : (
+            <ul className="flex flex-col divide-y divide-line">
+              {teams.map((t) => (
+                <li key={t.id}>
+                  <Link to={`/team/${t.id}`} className="flex items-center justify-between py-2.5 text-sm hover:text-accent">
+                    <span className="font-medium">{t.name}</span>
+                    <span className="text-xs text-muted">
+                      {t.role} · {t.members}명
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        <div id="notifications" className="scroll-mt-20">
+          <Section title="알림">
+            <NotifySettings />
+          </Section>
+        </div>
+
+        <Section title="AI 연결">
+          <AIConnections />
+        </Section>
+
+    </Page>
   )
 }
